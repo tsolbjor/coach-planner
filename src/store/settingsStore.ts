@@ -1,26 +1,22 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { SportConfig, KeeperMode } from '../types'
+import type { SportConfig } from '../types'
 import { SOCCER_PRESET } from '../constants/sportPresets'
 
 interface SettingsState {
   sportConfig: SportConfig
-  keeperMode: KeeperMode
-  subsPerPeriod: number
+  benchStintMinutes: number
   setSportConfig: (config: SportConfig) => void
-  setKeeperMode: (mode: KeeperMode) => void
-  setSubsPerPeriod: (n: number) => void
+  setBenchStintMinutes: (n: number) => void
 }
 
 export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       sportConfig: SOCCER_PRESET,
-      keeperMode: 'rotating',
-      subsPerPeriod: 3,
+      benchStintMinutes: 5,
       setSportConfig: (config) => set({ sportConfig: config }),
-      setKeeperMode: (mode) => set({ keeperMode: mode }),
-      setSubsPerPeriod: (n) => set({ subsPerPeriod: n }),
+      setBenchStintMinutes: (n) => set({ benchStintMinutes: n }),
     }),
     { name: 'coach-settings' },
   ),

@@ -8,6 +8,8 @@ export interface PositionType {
   /** Used to group colors in the UI */
   group: 'keeper' | 'defender' | 'midfielder' | 'forward' | 'other'
   isKeeper: boolean
+  /** Minimum minutes to keep the same player in this role before rotating */
+  rotateEveryMinutes: number
 }
 
 /** A single slot in the formation (e.g. the second CB slot) */

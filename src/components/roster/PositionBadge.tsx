@@ -25,13 +25,25 @@ export function PositionBadge({ position, selected = false, onClick, size = 'md'
       onClick={onClick}
       disabled={!onClick}
       className={[
-        'rounded-lg border font-medium transition-all',
+        'inline-flex items-center gap-1 rounded-lg border font-medium transition-all',
         base,
-        onClick ? 'cursor-pointer hover:opacity-80 active:scale-95' : 'cursor-default',
-        selected ? colors + ' ring-2 ring-offset-1 ring-current' : colors + ' opacity-50',
+        onClick ? 'cursor-pointer hover:-translate-y-px active:translate-y-0' : 'cursor-default',
+        selected
+          ? colors + ' shadow-sm ring-1 ring-offset-1 ring-current/20'
+          : 'bg-white text-slate-400 border-slate-200 hover:border-slate-300 hover:text-slate-500',
       ].join(' ')}
       aria-pressed={onClick ? selected : undefined}
+      title={selected ? `${position.label} enabled` : `${position.label} disabled`}
     >
+      <span
+        className={[
+          'inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold',
+          selected ? 'bg-white/70 text-current' : 'bg-slate-100 text-slate-400',
+        ].join(' ')}
+        aria-hidden="true"
+      >
+        {selected ? '✓' : '−'}
+      </span>
       {position.shortLabel}
     </button>
   )

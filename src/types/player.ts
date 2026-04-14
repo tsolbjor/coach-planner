@@ -3,8 +3,6 @@ export interface Player {
   name: string
   /** Optional shirt number */
   number?: number
-  /** PositionType.id[] — positions this player prefers */
-  preferredPositionTypeIds: string[]
-  canBeKeeper: boolean
-  isFixedKeeper: boolean
+  /** PositionType.id[] — positions this player should not be assigned to */
+  excludedPositionTypeIds: string[]
 }

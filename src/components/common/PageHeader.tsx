@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import type { ReactNode } from 'react'
 
 interface PageHeaderProps {
-  title: string
+  title: ReactNode
   backTo?: string
   action?: ReactNode
 }
@@ -10,7 +10,7 @@ interface PageHeaderProps {
 export function PageHeader({ title, backTo, action }: PageHeaderProps) {
   const navigate = useNavigate()
   return (
-    <header className="flex items-center gap-3 py-3 mb-4">
+    <header className="flex flex-wrap items-center gap-3 py-3 mb-4 sm:flex-nowrap">
       {backTo && (
         <button
           onClick={() => navigate(backTo)}
@@ -22,8 +22,8 @@ export function PageHeader({ title, backTo, action }: PageHeaderProps) {
           </svg>
         </button>
       )}
-      <h1 className="text-xl font-bold flex-1">{title}</h1>
-      {action && <div>{action}</div>}
+      <h1 className="text-xl font-bold flex-1 min-w-0">{title}</h1>
+      {action && <div className="ml-auto shrink-0">{action}</div>}
     </header>
   )
 }

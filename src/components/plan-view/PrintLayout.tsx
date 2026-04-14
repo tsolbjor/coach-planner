@@ -12,8 +12,7 @@ export function PrintLayout({ plan }: PrintLayoutProps) {
         <h1 className="text-2xl font-bold">{plan.name}</h1>
         <p className="text-slate-500 text-sm">
           {plan.sportConfig.name} · {plan.sportConfig.periodCount}×{plan.sportConfig.periodDurationMinutes} min ·{' '}
-          {plan.subsPerPeriod} sub{plan.subsPerPeriod !== 1 ? 's' : ''} per half ·{' '}
-          Keeper: {plan.keeperMode}
+          {plan.benchStintMinutes} min stints
         </p>
       </div>
 
