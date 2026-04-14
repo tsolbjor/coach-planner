@@ -1,10 +1,4 @@
-import type { TimeSlot, Player, SportConfig } from '../../types'
-
-interface SubMarkerProps {
-  prev: TimeSlot
-  next: TimeSlot
-  players: Player[]
-}
+import type { TimeSlot, SportConfig } from '../../types'
 
 /**
  * Returns a Map<playerId, positionLabel> for players coming on in `nextSlot`.
@@ -34,31 +28,4 @@ export function computeSubDiff(prev: TimeSlot, next: TimeSlot) {
   }
 }
 
-export function SubMarker({ prev, next, players }: SubMarkerProps) {
-  const playerById = new Map(players.map((p) => [p.id, p]))
-  const { comingOn, goingOff } = computeSubDiff(prev, next)
 
-  if (comingOn.length === 0 && goingOff.length === 0) return null
-
-  const name = (id: string) => playerById.get(id)?.name ?? id
-
-  return (
-    <div className="flex items-center gap-3 px-2 py-1.5 my-0.5">
-      <span className="text-xs text-slate-400 font-medium whitespace-nowrap tabular-nums w-8 text-right">
-        {Math.floor(next.startMinute)}'
-      </span>
-      <div className="flex-1 flex flex-wrap gap-x-4 gap-y-0.5">
-        {comingOn.length > 0 && (
-          <span className="text-xs text-green-700 font-medium">
-            ▲ {comingOn.map(name).join(', ')}
-          </span>
-        )}
-        {goingOff.length > 0 && (
-          <span className="text-xs text-red-600 font-medium">
-            ▼ {goingOff.map(name).join(', ')}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}

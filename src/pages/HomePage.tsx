@@ -191,7 +191,7 @@ function CreatePlanModal({
 
   const handleCreate = () => {
     const nextSportConfig = buildSportConfig(
-      selectedPreset.id.startsWith('custom') ? 'custom' : 'custom',
+      'custom',
       positions,
       totalPlayers,
       periodCount,

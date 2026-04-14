@@ -54,9 +54,14 @@ export function buildTopFlowItems(planId?: string, activeStep?: FlowStep): TopFl
 
 export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
   const location = useLocation()
-  const helpParams = new URLSearchParams(location.search)
-  helpParams.set('help', '1')
-  const helpActive = helpParams.get('help') === '1' && new URLSearchParams(location.search).get('help') === '1'
+  const searchParams = new URLSearchParams(location.search)
+  const helpActive = searchParams.get('help') === '1'
+  const helpParams = new URLSearchParams(searchParams)
+  if (helpActive) {
+    helpParams.delete('help')
+  } else {
+    helpParams.set('help', '1')
+  }
 
   return (
     <nav className={['mb-6 overflow-x-auto pb-1', className].join(' ')} aria-label="App flow">

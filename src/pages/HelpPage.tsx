@@ -13,46 +13,47 @@ const sections = [
   {
     title: 'How Rotation Works',
     points: [
-      'The match is split into segments based on `Minutes on bench`. A 40 minute match with 5 minute stints becomes 8 segments.',
+      'The match is split into segments based on "Minutes on bench". A 40-minute match with 5-minute stints becomes 8 segments.',
       'For each segment, the planner decides who is on the field, who is on the bench, and which player fills each position.',
-      'Players who have been benched recently are given lower bench priority, so the planner keeps pushing toward fair bench usage over the full plan.',
+      'Players stay in the same position until they are subbed off. When they come back on, they may be placed in a different position.',
+      'Players who have been benched recently are given lower bench priority, so the planner pushes toward fair bench usage over the full plan.',
     ],
   },
   {
-    title: 'Position Rules',
+    title: 'Position Eligibility',
     points: [
-      'On the Players step, every position chip is selected by default. Deselect a chip only when that player should never be used there.',
-      'If a player can cover multiple positions, the planner now prefers to vary their role across the segments they stay on the pitch.',
-      'If a player is the only realistic fit for a slot, the planner will keep using them there. Plan validity wins over variety.',
-    ],
-  },
-  {
-    title: 'Rotate By',
-    points: [
-      'Each position can have its own `Rotate by` value in minutes.',
-      'A positive value means the player in that slot should stay there for at least that many minutes before the planner is allowed to rotate the role.',
-      'This is useful for positions like goalkeeper, where you may want longer stints than the general bench cadence.',
+      'On the Players step, every position chip is selected by default. Deselect a chip only when that player should never play there.',
+      'The planner will never assign a player to a position they have opted out of.',
+      'Players who cannot play any outfield position (e.g., goalkeeper-only) are automatically benched when not in their eligible role.',
     ],
   },
   {
     title: 'Goalkeeper Logic',
     points: [
-      'Goalkeeper is configured the same way as every other role. A player is eligible if the `GK` chip stays selected on the Players page.',
-      'If goalkeeper changes during a period, the new goalkeeper must come from the previous segment bench. The outgoing goalkeeper then goes to the bench for that segment.',
-      'That keeps goalkeeper changes more realistic without needing a separate special player mode.',
+      'The goalkeeper role has a configurable "Rotate every" value (in minutes) that controls how long each goalkeeper stays before rotating.',
+      'A player is eligible for goalkeeper if the GK chip stays selected on the Players page.',
+      'When the goalkeeper changes during a period, the new keeper must come from the bench. The outgoing keeper then takes a bench stint.',
     ],
   },
   {
-    title: 'When The Plan Changes',
+    title: 'Locking & Releasing Slots',
     points: [
-      'The plan regenerates when you change the roster, absences, bench stint length, match count, position eligibility, or any position `Rotate by` value.',
-      'Manual edits in the generated step can still be used to adjust specific slots after generation.',
+      'Tap a slot in the generated plan to edit it manually. Saving locks the slot so it is preserved on regeneration.',
+      'Locked slots show a lock icon. Tap "Back to auto" to release a locked slot and let the planner recalculate it.',
+      'The plan regenerates automatically when you lock or release a slot.',
+    ],
+  },
+  {
+    title: 'When The Plan Regenerates',
+    points: [
+      'The plan regenerates when you change the roster, absences, bench stint length, match count, or position eligibility.',
+      'Locking or releasing a slot also triggers regeneration.',
       'If there are no active players left, the generated plan is cleared instead of showing stale assignments.',
     ],
   },
 ]
 
-export function HelpContent() {
+function HelpContent() {
   return (
     <>
       <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">

@@ -18,28 +18,6 @@ export function assignKeeper(
   requireBenchChange: boolean,
   warnings: SchedulerWarning[],
 ): string | null {
-  return assignRotatingKeeper(
-    players,
-    scores,
-    keeperPositionTypeId,
-    lastKeeperId,
-    minKeeperSegments,
-    previousBenchIds,
-    requireBenchChange,
-    warnings,
-  )
-}
-
-function assignRotatingKeeper(
-  players: Player[],
-  scores: Map<string, PlayerScore>,
-  keeperPositionTypeId: string,
-  lastKeeperId: string | null,
-  minKeeperSegments: number,
-  previousBenchIds: string[],
-  requireBenchChange: boolean,
-  warnings: SchedulerWarning[],
-): string | null {
   // Enforce minimum keeper stint: if the last keeper hasn't served enough segments, keep them
   if (lastKeeperId && minKeeperSegments > 0) {
     const lastScore = scores.get(lastKeeperId)

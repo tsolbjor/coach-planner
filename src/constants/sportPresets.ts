@@ -36,32 +36,4 @@ export const SOCCER_PRESET: SportConfig = {
   ],
 }
 
-export const HANDBALL_PRESET: SportConfig = {
-  presetId: 'handball',
-  name: 'Handball (7v7)',
-  totalOnField: 7,
-  benchSize: 2,
-  periodCount: 2,
-  periodDurationMinutes: 20,
-  hasKeeper: true,
-  positionTypes: [
-    { id: 'gk',  label: 'Goalkeeper',    shortLabel: 'GK',  group: 'keeper',   isKeeper: true,  rotateEveryMinutes: 0 },
-    { id: 'ld',  label: 'Left Defence',  shortLabel: 'LD',  group: 'defender', isKeeper: false, rotateEveryMinutes: 0 },
-    { id: 'cd',  label: 'Centre Back',   shortLabel: 'CD',  group: 'defender', isKeeper: false, rotateEveryMinutes: 0 },
-    { id: 'rd',  label: 'Right Defence', shortLabel: 'RD',  group: 'defender', isKeeper: false, rotateEveryMinutes: 0 },
-    { id: 'lw',  label: 'Left Wing',     shortLabel: 'LW',  group: 'forward',  isKeeper: false, rotateEveryMinutes: 0 },
-    { id: 'rw',  label: 'Right Wing',    shortLabel: 'RW',  group: 'forward',  isKeeper: false, rotateEveryMinutes: 0 },
-    { id: 'pv',  label: 'Pivot',         shortLabel: 'PV',  group: 'forward',  isKeeper: false, rotateEveryMinutes: 0 },
-  ],
-  lineupSlots: [
-    { slotId: 'gk', positionTypeId: 'gk', label: 'GK' },
-    { slotId: 'ld', positionTypeId: 'ld', label: 'LD' },
-    { slotId: 'cd', positionTypeId: 'cd', label: 'CD' },
-    { slotId: 'rd', positionTypeId: 'rd', label: 'RD' },
-    { slotId: 'lw', positionTypeId: 'lw', label: 'LW' },
-    { slotId: 'rw', positionTypeId: 'rw', label: 'RW' },
-    { slotId: 'pv', positionTypeId: 'pv', label: 'PV' },
-  ],
-}
 
-export const SPORT_PRESETS: SportConfig[] = [SOCCER_PRESET, HANDBALL_PRESET]
