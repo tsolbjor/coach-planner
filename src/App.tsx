@@ -1,6 +1,7 @@
 import { createHashRouter, Outlet, RouterProvider, useLocation, useNavigate } from 'react-router-dom'
 import { HomePage } from './pages/HomePage'
 import { HelpModal } from './pages/HelpPage'
+import { ImportPage } from './pages/ImportPage'
 import { PlanPage } from './pages/PlanPage'
 import { PlanViewPage } from './pages/PlanViewPage'
 
@@ -33,6 +34,7 @@ const router = createHashRouter([
     element: <RootLayout />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'import', element: <ImportPage /> },
       { path: 'plan/:id', element: <PlanPage /> },
       { path: 'plan/:id/view', element: <PlanViewPage /> },
     ],

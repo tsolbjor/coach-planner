@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { buildShareUrl } from '../utils/shareUrl'
 import { generatePlan } from '../scheduler'
 import { useSavedPlansStore } from '../store'
 import type { MatchPlan, Player, TimeSlot } from '../types'
@@ -220,6 +221,17 @@ function GeneratedStep({
 }) {
   const { updateMatch, updateMatchSlot } = useSavedPlansStore()
   const [editingSlotId, setEditingSlotId] = useState<string | null>(null)
+  const [shareCopied, setShareCopied] = useState(false)
+
+  const handleShare = () => {
+    const url = buildShareUrl(plan)
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setShareCopied(true)
+        setTimeout(() => setShareCopied(false), 2000)
+      })
+      .catch(() => alert('Copy failed — try again'))
+  }
 
   const { sportConfig, roster, slots, benchStintMinutes, matchCount, absentPlayerIds } = plan
 
@@ -314,29 +326,10 @@ function GeneratedStep({
 
       <Button
         variant="secondary"
-        onClick={() => {
-          const playerMinutesSummary = Array.from(playerMinutes.entries()).map(([playerId, totalMinutes]) => {
-            const player = roster.find((entry) => entry.id === playerId)
-            return { id: playerId, name: player?.name ?? playerId, totalMinutes }
-          })
-          const payload = {
-              config: {
-                sportConfig,
-                benchStintMinutes,
-                matchCount,
-                absentPlayerIds,
-              },
-            roster,
-            slots,
-            playerMinutesSummary,
-          }
-          navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
-            .then(() => alert('Copied to clipboard!'))
-            .catch(() => alert('Copy failed — try again'))
-        }}
+        onClick={handleShare}
         fullWidth
       >
-        Export
+        {shareCopied ? 'Link copied!' : 'Copy share link'}
       </Button>
     </div>
   )
@@ -350,6 +343,17 @@ export function PlanPage() {
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
   const [warnings, setWarnings] = useState<string[]>([])
+  const [headerShareCopied, setHeaderShareCopied] = useState(false)
+
+  const handleHeaderShare = (currentPlan: MatchPlan) => {
+    const url = buildShareUrl(currentPlan)
+    navigator.clipboard.writeText(url)
+      .then(() => {
+        setHeaderShareCopied(true)
+        setTimeout(() => setHeaderShareCopied(false), 2000)
+      })
+      .catch(() => alert('Copy failed — try again'))
+  }
 
   const item = items.find((entry) => entry.kind === 'match' && entry.plan.id === id)
 
@@ -450,6 +454,24 @@ export function PlanPage() {
               {plan.name}
             </button>
           )
+        }
+        action={
+          <button
+            onClick={() => handleHeaderShare(plan)}
+            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 active:bg-slate-200"
+            title="Copy share link"
+          >
+            {headerShareCopied ? (
+              <svg className="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            ) : (
+              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+            )}
+            {headerShareCopied ? 'Copied!' : 'Share'}
+          </button>
         }
       />
 
