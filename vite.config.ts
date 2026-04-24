@@ -3,6 +3,6 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
-  base: '/tsolbjor-coach/',
+  base: process.env.VITE_BASE ?? '/',
   plugins: [react(), tailwindcss()],
 })
