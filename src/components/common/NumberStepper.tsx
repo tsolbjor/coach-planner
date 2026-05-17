@@ -14,9 +14,9 @@ function decimalsFor(value: number): number {
   return dot === -1 ? 0 : str.length - dot - 1
 }
 
-function formatValue(value: number): string {
+function formatValue(value: number, precision: number): string {
   if (Number.isInteger(value)) return String(value)
-  return value.toFixed(1).replace(/\.0$/, '')
+  return value.toFixed(precision).replace(/\.?0+$/, '')
 }
 
 export function NumberStepper({
@@ -50,7 +50,7 @@ export function NumberStepper({
           </svg>
         </button>
         <span className="px-3 py-2 min-w-[2.5rem] text-center font-semibold tabular-nums">
-          {formatValue(value)}{suffix ? <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span> : null}
+          {formatValue(value, precision)}{suffix ? <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span> : null}
         </span>
         <button
           type="button"
