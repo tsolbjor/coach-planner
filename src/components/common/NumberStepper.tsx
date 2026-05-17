@@ -16,7 +16,10 @@ function decimalsFor(value: number): number {
 
 function formatValue(value: number, precision: number): string {
   if (Number.isInteger(value)) return String(value)
-  return value.toFixed(precision).replace(/\.?0+$/, '')
+  const fixed = value.toFixed(precision)
+  return fixed
+    .replace(/(\.\d*?[1-9])0+$/, '$1')
+    .replace(/\.0+$/, '')
 }
 
 export function NumberStepper({
