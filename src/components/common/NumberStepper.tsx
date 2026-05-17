@@ -2,19 +2,45 @@ interface NumberStepperProps {
   value: number
   min?: number
   max?: number
+  step?: number
   onChange: (value: number) => void
   label?: string
   suffix?: string
 }
 
-export function NumberStepper({ value, min = 0, max = 99, onChange, label, suffix }: NumberStepperProps) {
+function decimalsFor(value: number): number {
+  const str = String(value)
+  const dot = str.indexOf('.')
+  return dot === -1 ? 0 : str.length - dot - 1
+}
+
+function formatValue(value: number): string {
+  if (Number.isInteger(value)) return String(value)
+  return value.toFixed(1).replace(/\.0$/, '')
+}
+
+export function NumberStepper({
+  value,
+  min = 0,
+  max = 99,
+  step = 1,
+  onChange,
+  label,
+  suffix,
+}: NumberStepperProps) {
+  const precision = Math.max(decimalsFor(step), decimalsFor(min), decimalsFor(max))
+  const clamp = (next: number) => {
+    const clamped = Math.min(max, Math.max(min, next))
+    return Number(clamped.toFixed(precision))
+  }
+
   return (
     <div className="flex items-center gap-3">
       {label && <span className="text-sm text-slate-600 flex-1">{label}</span>}
       <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden">
         <button
           type="button"
-          onClick={() => onChange(Math.max(min, value - 1))}
+          onClick={() => onChange(clamp(value - step))}
           disabled={value <= min}
           className="px-3 py-2 text-slate-600 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-30 min-touch flex items-center justify-center"
           aria-label="Decrease"
@@ -24,11 +50,11 @@ export function NumberStepper({ value, min = 0, max = 99, onChange, label, suffi
           </svg>
         </button>
         <span className="px-3 py-2 min-w-[2.5rem] text-center font-semibold tabular-nums">
-          {value}{suffix ? <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span> : null}
+          {formatValue(value)}{suffix ? <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span> : null}
         </span>
         <button
           type="button"
-          onClick={() => onChange(Math.min(max, value + 1))}
+          onClick={() => onChange(clamp(value + step))}
           disabled={value >= max}
           className="px-3 py-2 text-slate-600 hover:bg-slate-100 active:bg-slate-200 disabled:opacity-30 min-touch flex items-center justify-center"
           aria-label="Increase"

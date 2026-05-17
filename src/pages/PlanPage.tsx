@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { nanoid } from 'nanoid'
 import { buildShareUrl } from '../utils/shareUrl'
 import { generatePlan } from '../scheduler'
 import { useSavedPlansStore } from '../store'
@@ -16,10 +17,101 @@ import { computeSubDiff, buildComingOnPositions } from '../components/planner/Su
 import { PlayerListItem } from '../components/roster/PlayerListItem'
 
 type PlanStep = 'roster' | 'planner' | 'generated'
+type PositionRow = {
+  id: string
+  label: string
+  rotateEveryMinutes: number
+  group: MatchPlan['sportConfig']['positionTypes'][number]['group']
+}
 
 function getPlanStep(value: string | null): PlanStep {
   if (value === 'roster' || value === 'generated') return value
   return 'planner'
+}
+
+function makePositionRow(index: number): PositionRow {
+  return {
+    id: `pos_${nanoid(4)}`,
+    label: index === 0 ? 'GK' : `P${index + 1}`,
+    rotateEveryMinutes: 0,
+    group: index === 0 ? 'keeper' : 'other',
+  }
+}
+
+function rowsFromSportConfig(sportConfig: MatchPlan['sportConfig']): PositionRow[] {
+  return sportConfig.lineupSlots.map((slot, index) => {
+    const position = sportConfig.positionTypes.find((type) => type.id === slot.positionTypeId)
+    return {
+      id: slot.slotId,
+      label: index === 0 ? 'GK' : (position?.label ?? slot.label),
+      rotateEveryMinutes: position?.rotateEveryMinutes ?? 0,
+      group: index === 0 ? 'keeper' : (position?.group ?? 'other'),
+    }
+  })
+}
+
+function ensurePositionCount(rows: PositionRow[], count: number): PositionRow[] {
+  const sliced = rows.slice(0, count)
+  const next = [...sliced]
+  while (next.length < count) next.push(makePositionRow(next.length))
+  return next.map((row, index) => ({
+    ...row,
+    label: index === 0 ? 'GK' : row.label,
+    group: index === 0 ? 'keeper' : row.group,
+  }))
+}
+
+function buildSportConfig(
+  positions: PositionRow[],
+  totalPlayers: number,
+  periodCount: number,
+  periodDurationMinutes: number,
+): MatchPlan['sportConfig'] {
+  const totalMatchMinutes = periodCount * periodDurationMinutes
+  const normalizedPositions = positions.map((position, index) => ({
+    ...position,
+    label: index === 0 ? 'GK' : position.label.trim() || `P${index + 1}`,
+    group: index === 0 ? 'keeper' : position.group,
+    rotateEveryMinutes: Math.min(position.rotateEveryMinutes, totalMatchMinutes),
+  }))
+  const bench = Math.max(0, totalPlayers - normalizedPositions.length)
+
+  return {
+    presetId: 'custom',
+    name: `${normalizedPositions.length}-a-side`,
+    totalOnField: normalizedPositions.length,
+    benchSize: bench,
+    periodCount,
+    periodDurationMinutes,
+    hasKeeper: true,
+    positionTypes: normalizedPositions.map((position, index) => ({
+      id: position.id,
+      label: position.label,
+      shortLabel: position.label.slice(0, 4),
+      group: index === 0 ? ('keeper' as const) : position.group,
+      isKeeper: index === 0,
+      rotateEveryMinutes: index === 0 ? position.rotateEveryMinutes : 0,
+    })),
+    lineupSlots: normalizedPositions.map((position) => ({
+      slotId: position.id,
+      positionTypeId: position.id,
+      label: position.label,
+    })),
+  }
+}
+
+function buildRosterForTotalPlayers(roster: MatchPlan['roster'], totalPlayers: number): MatchPlan['roster'] {
+  if (totalPlayers <= roster.length) return roster.slice(0, totalPlayers)
+  const next = [...roster]
+  for (let i = roster.length; i < totalPlayers; i++) {
+    next.push({
+      id: nanoid(8),
+      name: `Player ${i + 1}`,
+      number: i + 1,
+      excludedPositionTypeIds: [],
+    })
+  }
+  return next
 }
 
 function buildSlotsByMatchByPeriod(slots: TimeSlot[], matchCount: number, periodCount: number) {
@@ -59,6 +151,152 @@ function buildGenerationSignature(
     })),
     lockedSlotIds: slots.filter((s) => s.locked).map((s) => s.id).sort(),
   })
+}
+
+function EditPlanSetupModal({
+  plan,
+  onClose,
+  onSave,
+}: {
+  plan: MatchPlan
+  onClose: () => void
+  onSave: (updates: Partial<Omit<MatchPlan, 'id' | 'createdAt'>>) => void
+}) {
+  const [positions, setPositions] = useState<PositionRow[]>(() => rowsFromSportConfig(plan.sportConfig))
+  const [totalPlayers, setTotalPlayers] = useState(plan.roster.length)
+  const [periodCount, setPeriodCount] = useState(plan.sportConfig.periodCount)
+  const [periodDuration, setPeriodDuration] = useState(plan.sportConfig.periodDurationMinutes)
+
+  const onField = positions.length
+  const benchSize = Math.max(0, totalPlayers - onField)
+
+  const handleOnFieldChange = (value: number) => {
+    setPositions((prev) => ensurePositionCount(prev, value))
+    setTotalPlayers((prev) => Math.max(prev, value))
+  }
+
+  const handleLabelChange = (id: string, label: string) => {
+    setPositions((prev) => prev.map((position, index) => (
+      position.id === id
+        ? { ...position, label: index === 0 ? 'GK' : label }
+        : position
+    )))
+  }
+
+  const handleSave = () => {
+    const nextSportConfig = buildSportConfig(positions, totalPlayers, periodCount, periodDuration)
+    const validPositionTypeIds = new Set(nextSportConfig.positionTypes.map((position) => position.id))
+    const resizedRoster = buildRosterForTotalPlayers(plan.roster, totalPlayers).map((player) => ({
+      ...player,
+      excludedPositionTypeIds: player.excludedPositionTypeIds.filter((id) => validPositionTypeIds.has(id)),
+    }))
+    const validRosterIds = new Set(resizedRoster.map((player) => player.id))
+    const totalMatchMinutes = periodCount * periodDuration
+
+    onSave({
+      sportConfig: {
+        ...nextSportConfig,
+        positionTypes: nextSportConfig.positionTypes.map((position) => ({
+          ...position,
+          rotateEveryMinutes: Math.min(position.rotateEveryMinutes, totalMatchMinutes),
+        })),
+      },
+      roster: resizedRoster,
+      absentPlayerIds: plan.absentPlayerIds.filter((id) => validRosterIds.has(id)),
+      benchStintMinutes: Math.min(plan.benchStintMinutes, periodDuration),
+      slots: [],
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-3 backdrop-blur-sm sm:items-center sm:p-6">
+      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-4 sm:px-6">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Plan setup</p>
+            <h2 className="mt-1 text-xl font-bold text-slate-900">Edit plan settings</h2>
+          </div>
+          <Button size="sm" variant="secondary" onClick={onClose}>
+            Close
+          </Button>
+        </div>
+
+        <div className="overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
+          <div className="space-y-5">
+            <Card className="space-y-4">
+              <NumberStepper
+                label="Players on field"
+                value={onField}
+                min={1}
+                max={15}
+                onChange={handleOnFieldChange}
+              />
+              <NumberStepper
+                label="Total players"
+                value={totalPlayers}
+                min={onField}
+                max={30}
+                onChange={setTotalPlayers}
+              />
+              <NumberStepper
+                label="Periods"
+                value={periodCount}
+                min={1}
+                max={4}
+                onChange={setPeriodCount}
+              />
+              <NumberStepper
+                label="Period duration (min)"
+                value={periodDuration}
+                min={5}
+                max={60}
+                onChange={setPeriodDuration}
+              />
+
+              <p className="text-xs text-slate-500">
+                {benchSize} on bench. The first position is always goalkeeper.
+              </p>
+            </Card>
+
+            <Card padding={false}>
+              <div className="border-b border-slate-100 px-4 py-3">
+                <p className="text-sm font-medium text-slate-800">Position names</p>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {positions.map((position, index) => (
+                  <div key={position.id} className="flex items-center gap-3 px-4 py-3">
+                    <span className="w-5 shrink-0 text-xs tabular-nums text-slate-400">{index + 1}</span>
+                    <input
+                      type="text"
+                      value={position.label}
+                      onChange={(event) => handleLabelChange(position.id, event.target.value)}
+                      disabled={index === 0}
+                      className={[
+                        'flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
+                        index === 0
+                          ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
+                          : 'border-slate-300 bg-white',
+                      ].join(' ')}
+                      placeholder={index === 0 ? 'GK' : `P${index + 1}`}
+                    />
+                    {index === 0 && (
+                      <span className="rounded-md border border-yellow-300 bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
+                        GK
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            <Button fullWidth size="lg" onClick={handleSave}>
+              Save setup
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function RosterStep({
@@ -168,6 +406,7 @@ function PlannerStep({
   warnings: string[]
 }) {
   const { updateMatch } = useSavedPlansStore()
+  const [editingSetup, setEditingSetup] = useState(false)
 
   const { sportConfig, slots, benchStintMinutes, matchCount } = plan
 
@@ -184,6 +423,10 @@ function PlannerStep({
 
   return (
     <div className="space-y-4">
+      <Button variant="secondary" size="sm" onClick={() => setEditingSetup(true)} fullWidth>
+        Edit plan setup
+      </Button>
+
       <SubstitutionSettings
         sportConfig={sportConfig}
         benchStintMinutes={benchStintMinutes}
@@ -207,6 +450,17 @@ function PlannerStep({
         <p className="text-xs text-slate-500">
           The plan updates automatically when players or planner settings change.
         </p>
+      )}
+
+      {editingSetup && (
+        <EditPlanSetupModal
+          plan={plan}
+          onClose={() => setEditingSetup(false)}
+          onSave={(updates) => {
+            updateMatch(planId, updates)
+            setEditingSetup(false)
+          }}
+        />
       )}
     </div>
   )
