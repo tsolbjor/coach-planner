@@ -32,8 +32,9 @@ export function SubstitutionSettings({
         <NumberStepper
           label="Minutes on bench"
           value={benchStintMinutes}
-          min={1}
+          min={0.5}
           max={sportConfig.periodDurationMinutes}
+          step={0.5}
           suffix=" min"
           onChange={onBenchStintChange}
         />
@@ -65,6 +66,7 @@ export function SubstitutionSettings({
                   value={position.rotateEveryMinutes}
                   min={0}
                   max={totalMatchMinutes}
+                  step={0.5}
                   suffix=" min"
                   onChange={(value) => onPositionRotateChange(position.id, value)}
                 />
