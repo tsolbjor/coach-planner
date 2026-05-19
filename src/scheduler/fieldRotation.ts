@@ -18,27 +18,29 @@ export function assignField(
   forcedBenchPlayerIds: string[],
   scores: Map<string, PlayerScore>,
   previousAssignments: Record<string, string | null> | null,
+  slotOrderOffset = 0,
 ): { assignments: Record<string, string | null>; bench: string[] } {
   const outfieldSlots = lineupSlots.filter((s) => s.slotId !== keeperSlotId)
-  const fieldCount = outfieldSlots.length
   const forcedBenchSet = new Set(forcedBenchPlayerIds)
 
   const canPlayPosition = (player: Player, positionTypeId: string) =>
     !(player.excludedPositionTypeIds ?? []).includes(positionTypeId)
 
   const candidates: Player[] = []
+  const forcedCandidates: Player[] = []
   const ineligibleBench: string[] = []
   for (const p of players) {
-    if (p.id === keeperPlayerId || forcedBenchSet.has(p.id)) continue
+    if (p.id === keeperPlayerId) continue
     if (outfieldSlots.some((slot) => canPlayPosition(p, slot.positionTypeId))) {
-      candidates.push(p)
+      if (forcedBenchSet.has(p.id)) forcedCandidates.push(p)
+      else candidates.push(p)
     } else {
       ineligibleBench.push(p.id)
     }
   }
 
   // Sort by priority: most needs time → bench-fairness → deterministic tiebreak
-  const sorted = [...candidates].sort((a, b) => {
+  const sortByPriority = (a: Player, b: Player) => {
     const sa = scores.get(a.id)!
     const sb = scores.get(b.id)!
 
@@ -64,62 +66,138 @@ export function assignField(
 
     // 6. Deterministic tiebreak
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
-  })
+  }
 
-  const onField = sorted.slice(0, Math.min(fieldCount, sorted.length))
-  const bench = [
-    ...forcedBenchPlayerIds,
-    ...sorted.slice(Math.min(fieldCount, sorted.length)).map((p) => p.id),
-    ...ineligibleBench,
-  ]
+  const sortedAll = [...candidates, ...forcedCandidates].sort(sortByPriority)
+  const sortedBase = [...candidates].sort(sortByPriority)
 
   const assignments: Record<string, string | null> = {}
   if (keeperSlotId !== null) {
     assignments[keeperSlotId] = keeperPlayerId
   }
 
-  const onFieldSet = new Set(onField.map((p) => p.id))
-  const unassignedSlots = [...outfieldSlots]
-  const unassignedPlayers = [...onField]
-
-  // Pin continuing players: if a player was in this slot last segment and is still
-  // on the field, keep them in the same position.
-  for (const slot of [...unassignedSlots]) {
-    const previousPlayerId = previousAssignments?.[slot.slotId] ?? null
-    if (!previousPlayerId || previousPlayerId === keeperPlayerId) continue
-    if (!onFieldSet.has(previousPlayerId)) continue
-
-    const playerIndex = unassignedPlayers.findIndex((player) => (
-      player.id === previousPlayerId && canPlayPosition(player, slot.positionTypeId)
-    ))
-    if (playerIndex === -1) continue
-
-    assignments[slot.slotId] = previousPlayerId
-    unassignedPlayers.splice(playerIndex, 1)
-    unassignedSlots.splice(unassignedSlots.indexOf(slot), 1)
-  }
-
-  // Assign new players (from bench) to remaining slots by position eligibility
-  for (const slot of [...unassignedSlots]) {
-    const idx = unassignedPlayers.findIndex(
-      (player) => canPlayPosition(player, slot.positionTypeId),
+  const baseResult = assignOutfieldSlots(
+    outfieldSlots,
+    sortedBase,
+    previousAssignments,
+    canPlayPosition,
+    slotOrderOffset,
+  )
+  const useForcedCandidates = baseResult.unfilledCount > 0 && forcedCandidates.length > 0
+  const chosenResult = useForcedCandidates
+    ? assignOutfieldSlots(
+      outfieldSlots,
+      sortedAll,
+      previousAssignments,
+      canPlayPosition,
+      slotOrderOffset,
     )
-    if (idx !== -1) {
-      assignments[slot.slotId] = unassignedPlayers[idx]!.id
-      unassignedPlayers.splice(idx, 1)
-      unassignedSlots.splice(unassignedSlots.indexOf(slot), 1)
-    }
+    : baseResult
+
+  for (const slot of outfieldSlots) {
+    assignments[slot.slotId] = chosenResult.assignedBySlot[slot.slotId] ?? null
   }
 
-  // Mark remaining slots as empty (no eligible player available)
-  for (const slot of unassignedSlots) {
-    assignments[slot.slotId] = null
+  const bench: string[] = []
+  const benchSet = new Set<string>()
+  const addBench = (playerId: string) => {
+    if (playerId === keeperPlayerId) return
+    if (benchSet.has(playerId)) return
+    if (chosenResult.assignedPlayerIds.has(playerId)) return
+    benchSet.add(playerId)
+    bench.push(playerId)
   }
-
-  // Move any leftover players (ineligible for remaining slots) to bench
-  for (const player of unassignedPlayers) {
-    bench.push(player.id)
-  }
+  for (const forcedId of forcedBenchPlayerIds) addBench(forcedId)
+  for (const player of sortedAll) addBench(player.id)
+  for (const ineligibleId of ineligibleBench) addBench(ineligibleId)
 
   return { assignments, bench }
+}
+
+function assignOutfieldSlots(
+  outfieldSlots: LineupSlot[],
+  availablePlayers: Player[],
+  previousAssignments: Record<string, string | null> | null,
+  canPlayPosition: (player: Player, positionTypeId: string) => boolean,
+  slotOrderOffset: number,
+): {
+  assignedBySlot: Record<string, string | null>
+  assignedPlayerIds: Set<string>
+  unfilledCount: number
+} {
+  const assignedBySlot: Record<string, string | null> = {}
+  const assignedPlayerIds = new Set<string>()
+  const availableById = new Map(availablePlayers.map((player) => [player.id, player]))
+  const remainingSlots = [...outfieldSlots]
+
+  for (const slot of [...remainingSlots]) {
+    const previousPlayerId = previousAssignments?.[slot.slotId] ?? null
+    if (!previousPlayerId) continue
+    const player = availableById.get(previousPlayerId)
+    if (!player || !canPlayPosition(player, slot.positionTypeId)) continue
+    assignedBySlot[slot.slotId] = player.id
+    assignedPlayerIds.add(player.id)
+    availableById.delete(player.id)
+    remainingSlots.splice(remainingSlots.indexOf(slot), 1)
+  }
+
+  const remainingPlayers = [...availableById.values()]
+  const rotatedSlots = rotateSlots(remainingSlots, slotOrderOffset)
+  const matchedBySlot = maximumMatch(rotatedSlots, remainingPlayers, canPlayPosition)
+  for (const slot of remainingSlots) {
+    const playerId = matchedBySlot.get(slot.slotId) ?? null
+    assignedBySlot[slot.slotId] = playerId
+    if (playerId) assignedPlayerIds.add(playerId)
+  }
+
+  const unfilledCount = outfieldSlots.reduce(
+    (count, slot) => count + (assignedBySlot[slot.slotId] ? 0 : 1),
+    0,
+  )
+  return { assignedBySlot, assignedPlayerIds, unfilledCount }
+}
+
+function rotateSlots(slots: LineupSlot[], offset: number): LineupSlot[] {
+  if (slots.length <= 1) return slots
+  const normalized = ((offset % slots.length) + slots.length) % slots.length
+  if (normalized === 0) return slots
+  return [...slots.slice(normalized), ...slots.slice(0, normalized)]
+}
+
+function maximumMatch(
+  slots: LineupSlot[],
+  players: Player[],
+  canPlayPosition: (player: Player, positionTypeId: string) => boolean,
+): Map<string, string> {
+  const candidatesBySlot = new Map<string, Player[]>()
+  for (const slot of slots) {
+    candidatesBySlot.set(
+      slot.slotId,
+      players.filter((player) => canPlayPosition(player, slot.positionTypeId)),
+    )
+  }
+
+  const matchedSlotByPlayer = new Map<string, string>()
+  const matchedPlayerBySlot = new Map<string, string>()
+
+  const assign = (slotId: string, visited: Set<string>): boolean => {
+    const candidates = candidatesBySlot.get(slotId) ?? []
+    for (const player of candidates) {
+      if (visited.has(player.id)) continue
+      visited.add(player.id)
+      const currentSlotId = matchedSlotByPlayer.get(player.id)
+      if (!currentSlotId || assign(currentSlotId, visited)) {
+        matchedSlotByPlayer.set(player.id, slotId)
+        matchedPlayerBySlot.set(slotId, player.id)
+        return true
+      }
+    }
+    return false
+  }
+
+  for (const slot of slots) {
+    assign(slot.slotId, new Set<string>())
+  }
+
+  return matchedPlayerBySlot
 }
