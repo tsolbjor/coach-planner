@@ -172,11 +172,7 @@ function buildBenchLevelContext(
   const totalCounts = emptyLevelCounts()
   const totalBenchSlots = Math.max(0, pool.length + fixedBench.length - fieldSlots)
   const maxBenchL3 = Math.floor((2 * totalBenchSlots) / 3)
-  const benchCapsByLevel: LevelCounts = {
-    1: totalBenchSlots > 0 ? Math.min(totalCounts[1], MAX_BENCH_L1) : 0,
-    2: totalCounts[2],
-    3: Math.min(totalCounts[3], maxBenchL3),
-  }
+  const benchCapsByLevel = emptyLevelCounts()
 
   for (const level of PLAYER_LEVELS) {
     totalCounts[level] = poolCountsByLevel[level] + fixedBenchCounts[level]
