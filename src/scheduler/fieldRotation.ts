@@ -184,7 +184,7 @@ function buildBenchLevelContext(
   benchCapsByLevel[3] = Math.min(totalCounts[3], maxBenchL3)
 
   const benchTargetsByLevel = { ...fixedBenchCounts }
-  let remainingBenchSlots = Math.max(0, pool.length - fieldSlots)
+  let remainingBenchSlots = Math.max(0, totalBenchSlots - fixedBench.length)
 
   while (remainingBenchSlots > 0) {
     let selectedLevel: PlayerLevel | null = null
