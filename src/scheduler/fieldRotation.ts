@@ -81,6 +81,7 @@ export function assignField(
     sortedBase,
     previousAssignments,
     canPlayPosition,
+    new Set(sortedBase.slice(0, outfieldSlots.length).map((player) => player.id)),
     slotOrderOffset,
   )
   const useForcedCandidates = baseResult.unfilledCount > 0 && forcedCandidates.length > 0
@@ -90,6 +91,7 @@ export function assignField(
       sortedAll,
       previousAssignments,
       canPlayPosition,
+      new Set(sortedAll.slice(0, outfieldSlots.length).map((player) => player.id)),
       slotOrderOffset,
     )
     : baseResult
@@ -119,6 +121,7 @@ function assignOutfieldSlots(
   availablePlayers: Player[],
   previousAssignments: Record<string, string | null> | null,
   canPlayPosition: (player: Player, positionTypeId: string) => boolean,
+  preferredHoldPlayerIds: Set<string>,
   slotOrderOffset: number,
 ): {
   assignedBySlot: Record<string, string | null>
@@ -133,6 +136,7 @@ function assignOutfieldSlots(
   for (const slot of [...remainingSlots]) {
     const previousPlayerId = previousAssignments?.[slot.slotId] ?? null
     if (!previousPlayerId) continue
+    if (!preferredHoldPlayerIds.has(previousPlayerId)) continue
     const player = availableById.get(previousPlayerId)
     if (!player || !canPlayPosition(player, slot.positionTypeId)) continue
     assignedBySlot[slot.slotId] = player.id
