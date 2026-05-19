@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Player, SportConfig } from '../../types'
+import { normalizePlayerLevel, type Player, type PlayerLevel, type SportConfig } from '../../types'
 import { PositionBadge } from './PositionBadge'
 
 interface PlayerListItemProps {
@@ -25,23 +25,27 @@ export function PlayerListItem({
 }: PlayerListItemProps) {
   const [name, setName] = useState(player?.name ?? suggestedName ?? '')
   const [number, setNumber] = useState(player?.number?.toString() ?? suggestedNumber?.toString() ?? '')
+  const [level, setLevel] = useState<PlayerLevel>(normalizePlayerLevel(player?.level))
   const [excluded, setExcluded] = useState<string[]>(player?.excludedPositionTypeIds ?? [])
 
   useEffect(() => {
     setName(player?.name ?? suggestedName ?? '')
     setNumber(player?.number?.toString() ?? suggestedNumber?.toString() ?? '')
+    setLevel(normalizePlayerLevel(player?.level))
     setExcluded(player?.excludedPositionTypeIds ?? [])
   }, [player, suggestedName, suggestedNumber])
 
-  const commit = (overrides?: Partial<{ name: string; number: string; excluded: string[] }>) => {
+  const commit = (overrides?: Partial<{ name: string; number: string; level: PlayerLevel; excluded: string[] }>) => {
     const nextName = overrides?.name ?? name
     const nextNumber = overrides?.number ?? number
+    const nextLevel = overrides?.level ?? level
     const nextExcluded = overrides?.excluded ?? excluded
     const finalName = nextName.trim() || suggestedName || `Player ${suggestedNumber ?? ''}`
 
     onSave({
       name: finalName.trim(),
       number: nextNumber ? parseInt(nextNumber, 10) : undefined,
+      level: nextLevel,
       excludedPositionTypeIds: nextExcluded,
     })
   }
@@ -86,6 +90,20 @@ export function PlayerListItem({
               max={99}
               className="w-16 rounded-lg border border-slate-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
+            <select
+              value={level}
+              onChange={(e) => {
+                const nextLevel = normalizePlayerLevel(Number(e.target.value))
+                setLevel(nextLevel)
+                commit({ level: nextLevel })
+              }}
+              aria-label="Player level"
+              className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value={1}>L1</option>
+              <option value={2}>L2</option>
+              <option value={3}>L3</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">

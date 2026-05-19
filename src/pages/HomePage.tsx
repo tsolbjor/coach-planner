@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { nanoid } from 'nanoid'
+import { DEFAULT_PLAYER_LEVEL } from '../types'
 import { useSavedPlansStore, useSettingsStore } from '../store'
 import type { MatchPlan, SportConfig } from '../types'
 import { AppShell } from '../components/common/AppShell'
@@ -365,6 +366,7 @@ export function HomePage() {
       id: nanoid(8),
       name: `Player ${index + 1}`,
       number: index + 1,
+      level: DEFAULT_PLAYER_LEVEL,
       excludedPositionTypeIds: [] as string[],
     }))
     const plan = createMatch({

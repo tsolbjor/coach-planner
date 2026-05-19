@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from 'nanoid'
-import type { SavedItem, MatchPlan, TournamentPlan, Player, TimeSlot } from '../types'
+import { normalizePlayerLevel, type SavedItem, type MatchPlan, type TournamentPlan, type Player, type TimeSlot } from '../types'
 
 interface SavedPlansState {
   items: SavedItem[]
@@ -39,6 +39,34 @@ function patchMatch(
   })
 }
 
+function normalizePlayer(player: Player): Player {
+  return {
+    ...player,
+    level: normalizePlayerLevel(player.level),
+  }
+}
+
+function normalizeMatchPlan(plan: MatchPlan): MatchPlan {
+  return {
+    ...plan,
+    roster: plan.roster.map(normalizePlayer),
+  }
+}
+
+function normalizeTournamentPlan(plan: TournamentPlan): TournamentPlan {
+  return {
+    ...plan,
+    roster: plan.roster.map(normalizePlayer),
+    matches: plan.matches.map(normalizeMatchPlan),
+  }
+}
+
+function normalizeSavedItem(item: SavedItem): SavedItem {
+  return item.kind === 'match'
+    ? { kind: 'match', plan: normalizeMatchPlan(item.plan) }
+    : { kind: 'tournament', plan: normalizeTournamentPlan(item.plan) }
+}
+
 export const useSavedPlansStore = create<SavedPlansState>()(
   persist(
     (set, get) => ({
@@ -46,12 +74,12 @@ export const useSavedPlansStore = create<SavedPlansState>()(
       currentMatchId: null,
 
       createMatch: (base) => {
-        const plan: MatchPlan = {
+        const plan = normalizeMatchPlan({
           ...base,
           id: nanoid(8),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        }
+        })
         set((s) => ({ items: [...s.items, { kind: 'match', plan }], currentMatchId: plan.id }))
         return plan
       },
@@ -60,8 +88,9 @@ export const useSavedPlansStore = create<SavedPlansState>()(
 
       saveMatch: (plan) =>
         set((s) => {
+          const normalizedPlan = normalizeMatchPlan(plan)
           const idx = s.items.findIndex((i) => i.kind === 'match' && i.plan.id === plan.id)
-          const item: SavedItem = { kind: 'match', plan }
+          const item: SavedItem = { kind: 'match', plan: normalizedPlan }
           if (idx >= 0) {
             const items = [...s.items]
             items[idx] = item
@@ -72,8 +101,9 @@ export const useSavedPlansStore = create<SavedPlansState>()(
 
       saveTournament: (plan) =>
         set((s) => {
+          const normalizedPlan = normalizeTournamentPlan(plan)
           const idx = s.items.findIndex((i) => i.kind === 'tournament' && i.plan.id === plan.id)
-          const item: SavedItem = { kind: 'tournament', plan }
+          const item: SavedItem = { kind: 'tournament', plan: normalizedPlan }
           if (idx >= 0) {
             const items = [...s.items]
             items[idx] = item
@@ -95,6 +125,7 @@ export const useSavedPlansStore = create<SavedPlansState>()(
           items: patchMatch(s.items, planId, (plan) => ({
             ...plan,
             ...updates,
+            roster: (updates.roster ?? plan.roster).map(normalizePlayer),
             updatedAt: new Date().toISOString(),
           })),
         })),
@@ -103,7 +134,7 @@ export const useSavedPlansStore = create<SavedPlansState>()(
         set((s) => ({
           items: patchMatch(s.items, planId, (plan) => ({
             ...plan,
-            roster: [...plan.roster, { ...player, id: nanoid(8) }],
+            roster: [...plan.roster, normalizePlayer({ ...player, id: nanoid(8) })],
             updatedAt: new Date().toISOString(),
           })),
         })),
@@ -112,7 +143,7 @@ export const useSavedPlansStore = create<SavedPlansState>()(
         set((s) => ({
           items: patchMatch(s.items, planId, (plan) => ({
             ...plan,
-            roster: plan.roster.map((p) => (p.id === playerId ? { ...p, ...updates } : p)),
+            roster: plan.roster.map((p) => (p.id === playerId ? normalizePlayer({ ...p, ...updates }) : p)),
             updatedAt: new Date().toISOString(),
           })),
         })),
@@ -135,6 +166,18 @@ export const useSavedPlansStore = create<SavedPlansState>()(
           })),
         })),
     }),
-    { name: 'coach-saved-plans' },
+    {
+      name: 'coach-saved-plans',
+      merge: (persistedState, currentState) => {
+        const persisted = (persistedState as Partial<SavedPlansState> | undefined) ?? {}
+        return {
+          ...currentState,
+          ...persisted,
+          items: Array.isArray(persisted.items)
+            ? persisted.items.map(normalizeSavedItem)
+            : currentState.items,
+        }
+      },
+    },
   ),
 )
