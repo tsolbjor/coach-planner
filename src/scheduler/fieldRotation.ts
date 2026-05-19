@@ -159,6 +159,7 @@ function assignOutfieldSlots(
 
 function rotateSlots(slots: LineupSlot[], offset: number): LineupSlot[] {
   if (slots.length <= 1) return slots
+  // Keep offset in [0, slots.length) even when caller provides a negative value.
   const normalized = ((offset % slots.length) + slots.length) % slots.length
   if (normalized === 0) return slots
   return [...slots.slice(normalized), ...slots.slice(0, normalized)]
@@ -180,6 +181,7 @@ function maximumMatch(
   const matchedSlotByPlayer = new Map<string, string>()
   const matchedPlayerBySlot = new Map<string, string>()
 
+  // DFS augmenting-path search: rematch players when needed to maximize filled slots.
   const assign = (slotId: string, visited: Set<string>): boolean => {
     const candidates = candidatesBySlot.get(slotId) ?? []
     for (const player of candidates) {
