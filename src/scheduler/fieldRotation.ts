@@ -1,7 +1,10 @@
-import type { Player, LineupSlot } from '../types'
+import { normalizePlayerLevel, type Player, type PlayerLevel, type LineupSlot } from '../types'
 import type { PlayerScore } from './types'
 
 const MAX_CONSECUTIVE_BENCH = 1
+const PLAYER_LEVELS: PlayerLevel[] = [1, 2, 3]
+
+type LevelCounts = Record<PlayerLevel, number>
 
 /**
  * Given the keeper for this segment and the full player list,
@@ -28,48 +31,73 @@ export function assignField(
 
   const candidates: Player[] = []
   const forcedCandidates: Player[] = []
-  const ineligibleBench: string[] = []
+  const ineligibleBench: Player[] = []
   for (const p of players) {
     if (p.id === keeperPlayerId) continue
     if (outfieldSlots.some((slot) => canPlayPosition(p, slot.positionTypeId))) {
       if (forcedBenchSet.has(p.id)) forcedCandidates.push(p)
       else candidates.push(p)
     } else {
-      ineligibleBench.push(p.id)
+      ineligibleBench.push(p)
     }
   }
 
-  // Sort by priority: most needs time → bench-fairness → deterministic tiebreak
-  const sortByPriority = (a: Player, b: Player) => {
-    const sa = scores.get(a.id)!
-    const sb = scores.get(b.id)!
+  const createSortByPriority = (
+    pool: Player[],
+    fixedBench: Player[],
+  ) => {
+    const { benchNeedsByLevel, poolCountsByLevel } = buildBenchLevelContext(
+      pool,
+      fixedBench,
+      outfieldSlots.length,
+    )
 
-    // 1. Force players who've hit max consecutive bench to the front (safety valve)
-    const aForced = sa.consecutiveBench >= MAX_CONSECUTIVE_BENCH ? 1 : 0
-    const bForced = sb.consecutiveBench >= MAX_CONSECUTIVE_BENCH ? 1 : 0
-    if (aForced !== bForced) return bForced - aForced
+    return (a: Player, b: Player) => {
+      const sa = scores.get(a.id)!
+      const sb = scores.get(b.id)!
 
-    // 2. Sub the player on pitch the longest — maximises each player's unbroken run
-    if (sa.consecutiveFieldSegments !== sb.consecutiveFieldSegments)
-      return sa.consecutiveFieldSegments - sb.consecutiveFieldSegments
+      // 1. Force players who've hit max consecutive bench to the front (safety valve)
+      const aForced = sa.consecutiveBench >= MAX_CONSECUTIVE_BENCH ? 1 : 0
+      const bForced = sb.consecutiveBench >= MAX_CONSECUTIVE_BENCH ? 1 : 0
+      if (aForced !== bForced) return bForced - aForced
 
-    // 3. Equalise total pitch time — keeper time counts the same as field time
-    const totalA = sa.fieldMinutes + sa.keeperMinutes
-    const totalB = sb.fieldMinutes + sb.keeperMinutes
-    if (totalA !== totalB) return totalA - totalB
+      // 2. Equalise total pitch time — keeper time counts the same as field time
+      const totalA = sa.fieldMinutes + sa.keeperMinutes
+      const totalB = sb.fieldMinutes + sb.keeperMinutes
+      if (totalA !== totalB) return totalA - totalB
 
-    // 4. Players with more bench stints get higher field priority (compensatory fairness)
-    if (sa.benchSegments !== sb.benchSegments) return sb.benchSegments - sa.benchSegments
+      // 3. Spread bench spots across levels when minutes are otherwise comparable
+      const levelA = normalizePlayerLevel(a.level)
+      const levelB = normalizePlayerLevel(b.level)
+      const levelPressureA = benchNeedsByLevel[levelA] * poolCountsByLevel[levelB]
+      const levelPressureB = benchNeedsByLevel[levelB] * poolCountsByLevel[levelA]
+      if (levelPressureA !== levelPressureB) return levelPressureA - levelPressureB
+      if (benchNeedsByLevel[levelA] !== benchNeedsByLevel[levelB]) {
+        return benchNeedsByLevel[levelA] - benchNeedsByLevel[levelB]
+      }
 
-    // 5. FIFO: whoever was benched longest ago gets benched again first
-    if (sa.lastBenchedSegment !== sb.lastBenchedSegment) return sb.lastBenchedSegment - sa.lastBenchedSegment
+      // 4. Sub the player on pitch the longest — maximises each player's unbroken run
+      if (sa.consecutiveFieldSegments !== sb.consecutiveFieldSegments) {
+        return sa.consecutiveFieldSegments - sb.consecutiveFieldSegments
+      }
 
-    // 6. Deterministic tiebreak
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+      // 5. Players with more bench stints get higher field priority (compensatory fairness)
+      if (sa.benchSegments !== sb.benchSegments) return sb.benchSegments - sa.benchSegments
+
+      // 6. FIFO: whoever was benched longest ago gets benched again first
+      if (sa.lastBenchedSegment !== sb.lastBenchedSegment) return sb.lastBenchedSegment - sa.lastBenchedSegment
+
+      // 7. Deterministic tiebreak
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    }
   }
 
-  const sortedAll = [...candidates, ...forcedCandidates].sort(sortByPriority)
-  const sortedBase = [...candidates].sort(sortByPriority)
+  const sortedAll = [...candidates, ...forcedCandidates].sort(
+    createSortByPriority([...candidates, ...forcedCandidates], ineligibleBench),
+  )
+  const sortedBase = [...candidates].sort(
+    createSortByPriority(candidates, [...forcedCandidates, ...ineligibleBench]),
+  )
   const preferredHoldIds = (pool: Player[]) =>
     new Set(pool.slice(0, outfieldSlots.length).map((player) => player.id))
 
@@ -113,9 +141,81 @@ export function assignField(
   }
   for (const forcedId of forcedBenchPlayerIds) addBench(forcedId)
   for (const player of sortedAll) addBench(player.id)
-  for (const ineligibleId of ineligibleBench) addBench(ineligibleId)
+  for (const ineligiblePlayer of ineligibleBench) addBench(ineligiblePlayer.id)
 
   return { assignments, bench }
+}
+
+function emptyLevelCounts(): LevelCounts {
+  return { 1: 0, 2: 0, 3: 0 }
+}
+
+function countPlayersByLevel(players: Player[]): LevelCounts {
+  const counts = emptyLevelCounts()
+  for (const player of players) {
+    counts[normalizePlayerLevel(player.level)]++
+  }
+  return counts
+}
+
+function buildBenchLevelContext(
+  pool: Player[],
+  fixedBench: Player[],
+  fieldSlots: number,
+): {
+  benchNeedsByLevel: LevelCounts
+  poolCountsByLevel: LevelCounts
+} {
+  const poolCountsByLevel = countPlayersByLevel(pool)
+  const fixedBenchCounts = countPlayersByLevel(fixedBench)
+  const totalCounts = emptyLevelCounts()
+
+  for (const level of PLAYER_LEVELS) {
+    totalCounts[level] = poolCountsByLevel[level] + fixedBenchCounts[level]
+  }
+
+  const benchTargetsByLevel = { ...fixedBenchCounts }
+  let remainingBenchSlots = Math.max(0, (pool.length + fixedBench.length - fieldSlots) - fixedBench.length)
+
+  while (remainingBenchSlots > 0) {
+    let selectedLevel: PlayerLevel | null = null
+
+    for (const level of PLAYER_LEVELS) {
+      if (benchTargetsByLevel[level] >= totalCounts[level]) continue
+
+      if (selectedLevel === null) {
+        selectedLevel = level
+        continue
+      }
+
+      const levelTarget = benchTargetsByLevel[level]
+      const selectedTarget = benchTargetsByLevel[selectedLevel]
+      const levelRemainingCapacity = totalCounts[level] - levelTarget
+      const selectedRemainingCapacity = totalCounts[selectedLevel] - selectedTarget
+
+      if (
+        levelTarget < selectedTarget
+        || (levelTarget === selectedTarget && levelRemainingCapacity > selectedRemainingCapacity)
+      ) {
+        selectedLevel = level
+      }
+    }
+
+    if (selectedLevel === null) break
+
+    benchTargetsByLevel[selectedLevel]++
+    remainingBenchSlots--
+  }
+
+  const benchNeedsByLevel = emptyLevelCounts()
+  for (const level of PLAYER_LEVELS) {
+    benchNeedsByLevel[level] = Math.max(
+      0,
+      Math.min(poolCountsByLevel[level], benchTargetsByLevel[level] - fixedBenchCounts[level]),
+    )
+  }
+
+  return { benchNeedsByLevel, poolCountsByLevel }
 }
 
 function assignOutfieldSlots(

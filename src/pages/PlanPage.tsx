@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { nanoid } from 'nanoid'
+import { DEFAULT_PLAYER_LEVEL, normalizePlayerLevel } from '../types'
 import { buildShareUrl } from '../utils/shareUrl'
 import { generatePlan } from '../scheduler'
 import { useSavedPlansStore } from '../store'
@@ -108,6 +109,7 @@ function buildRosterForTotalPlayers(roster: MatchPlan['roster'], totalPlayers: n
       id: nanoid(8),
       name: `Player ${i + 1}`,
       number: i + 1,
+      level: DEFAULT_PLAYER_LEVEL,
       excludedPositionTypeIds: [],
     })
   }
@@ -147,6 +149,7 @@ function buildGenerationSignature(
       })),
     roster: roster.map((player) => ({
       id: player.id,
+      level: normalizePlayerLevel(player.level),
       excludedPositionTypeIds: [...player.excludedPositionTypeIds].sort(),
     })),
     lockedSlotIds: slots.filter((s) => s.locked).map((s) => s.id).sort(),
@@ -338,6 +341,7 @@ function RosterStep({
       addMatchPlayer(planId, {
         name: `Player ${i}`,
         number: i,
+        level: DEFAULT_PLAYER_LEVEL,
         excludedPositionTypeIds: [],
       })
     }
@@ -386,6 +390,7 @@ function RosterStep({
         onClick={() => handleSaveNew({
           name: `Player ${roster.length + 1}`,
           number: roster.length + 1,
+          level: DEFAULT_PLAYER_LEVEL,
           excludedPositionTypeIds: [],
         })}
         fullWidth
