@@ -193,10 +193,12 @@ function buildBenchLevelContext(
       const levelRemainingCapacity = totalCounts[level] - levelTarget
       const selectedRemainingCapacity = totalCounts[selectedLevel] - selectedTarget
 
-      if (
-        levelTarget < selectedTarget
-        || (levelTarget === selectedTarget && levelRemainingCapacity > selectedRemainingCapacity)
-      ) {
+      if (levelTarget < selectedTarget) {
+        selectedLevel = level
+        continue
+      }
+
+      if (levelTarget === selectedTarget && levelRemainingCapacity > selectedRemainingCapacity) {
         selectedLevel = level
       }
     }
