@@ -171,20 +171,20 @@ function buildBenchLevelContext(
   const poolCountsByLevel = countPlayersByLevel(pool)
   const fixedBenchCounts = countPlayersByLevel(fixedBench)
   const totalCounts = emptyLevelCounts()
-  const totalBenchSlots = Math.max(0, pool.length + fixedBench.length - fieldSlots)
-  const maxBenchL3 = Math.floor(totalBenchSlots * MAX_BENCH_L3_FRACTION)
+  const availableBenchSlots = Math.max(0, pool.length + fixedBench.length - fieldSlots)
+  const maxBenchL3 = Math.floor(availableBenchSlots * MAX_BENCH_L3_FRACTION)
   const benchCapsByLevel = emptyLevelCounts()
 
   for (const level of PLAYER_LEVELS) {
     totalCounts[level] = poolCountsByLevel[level] + fixedBenchCounts[level]
   }
 
-  benchCapsByLevel[1] = totalBenchSlots > 0 ? Math.min(totalCounts[1], MAX_BENCH_L1) : 0
-  benchCapsByLevel[2] = totalCounts[2]
-  benchCapsByLevel[3] = Math.min(totalCounts[3], maxBenchL3)
+  benchCapsByLevel[1] = availableBenchSlots > 0 ? Math.min(totalCounts[1], MAX_BENCH_L1) : 0
+  benchCapsByLevel[2] = availableBenchSlots > 0 ? totalCounts[2] : 0
+  benchCapsByLevel[3] = availableBenchSlots > 0 ? Math.min(totalCounts[3], maxBenchL3) : 0
 
   const benchTargetsByLevel = { ...fixedBenchCounts }
-  let remainingBenchSlots = Math.max(0, totalBenchSlots - fixedBench.length)
+  let remainingBenchSlots = Math.max(0, availableBenchSlots - fixedBench.length)
 
   while (remainingBenchSlots > 0) {
     let selectedLevel: PlayerLevel | null = null
