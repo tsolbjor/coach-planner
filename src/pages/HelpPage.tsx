@@ -15,7 +15,8 @@ const sections = [
     points: [
       'The match is split into segments based on "Minutes on bench". A 40-minute match with 5-minute stints becomes 8 segments.',
       'For each segment, the planner decides who is on the field, who is on the bench, and which player fills each position.',
-      'Players stay in the same position until they are subbed off. When they come back on, they may be placed in a different position.',
+      'Within each period, players usually stay in the same position until they are subbed off.',
+      'At period and match boundaries, the planner intentionally rebalances positions to increase role variety.',
       'Players who have been benched recently are given lower bench priority, so the planner pushes toward fair bench usage over the full plan.',
     ],
   },
@@ -32,7 +33,7 @@ const sections = [
     points: [
       'The goalkeeper role has a configurable "Rotate every" value (in minutes) that controls how long each goalkeeper stays before rotating.',
       'A player is eligible for goalkeeper if the GK chip stays selected on the Players page.',
-      'When the goalkeeper changes during a period, the new keeper must come from the bench. The outgoing keeper then takes a bench stint.',
+      'When the goalkeeper changes during a period, the planner prefers bringing the new keeper in from the bench and resting the outgoing keeper when there is room.',
     ],
   },
   {

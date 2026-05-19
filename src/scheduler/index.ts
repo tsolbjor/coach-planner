@@ -124,6 +124,10 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
     const samePeriodAsPrevious = previousSlot !== null
       && previousSlot.matchIndex === seg.matchIndex
       && previousSlot.periodIndex === seg.periodIndex
+    const segmentContinuityAssignments = samePeriodAsPrevious ? previousAssignments : null
+    const boundaryRotationOffset = samePeriodAsPrevious
+      ? 0
+      : ((seg.matchIndex * sportConfig.periodCount) + seg.periodIndex) % Math.max(1, sportConfig.totalOnField)
 
     const locked = lockedBySegment.get(seg.segmentIndex)
     if (locked) {
@@ -158,6 +162,7 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
       : null
     const forcedBenchPlayerIds =
       samePeriodAsPrevious && lastKeeperPlayerId && keeperPlayerId && keeperPlayerId !== lastKeeperPlayerId
+        && players.length > sportConfig.totalOnField
         ? [lastKeeperPlayerId]
         : []
     lastKeeperPlayerId = keeperPlayerId
@@ -170,7 +175,8 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
       keeperPlayerId,
       forcedBenchPlayerIds,
       scores,
-      previousAssignments,
+      segmentContinuityAssignments,
+      boundaryRotationOffset,
     )
 
     const dur = seg.endMinute - seg.startMinute
