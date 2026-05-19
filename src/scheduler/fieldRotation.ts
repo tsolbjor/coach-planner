@@ -3,6 +3,8 @@ import type { PlayerScore } from './types'
 
 const MAX_CONSECUTIVE_BENCH = 1
 const PLAYER_LEVELS: PlayerLevel[] = [1, 2, 3]
+const MAX_BENCH_L1 = 1
+const MAX_BENCH_L3_FRACTION = 2 / 3
 
 type LevelCounts = Record<PlayerLevel, number>
 
@@ -169,10 +171,17 @@ function buildBenchLevelContext(
   const poolCountsByLevel = countPlayersByLevel(pool)
   const fixedBenchCounts = countPlayersByLevel(fixedBench)
   const totalCounts = emptyLevelCounts()
+  const totalBenchSlots = Math.max(0, pool.length + fixedBench.length - fieldSlots)
+  const maxBenchL3 = Math.floor(totalBenchSlots * MAX_BENCH_L3_FRACTION)
+  const benchCapsByLevel = emptyLevelCounts()
 
   for (const level of PLAYER_LEVELS) {
     totalCounts[level] = poolCountsByLevel[level] + fixedBenchCounts[level]
   }
+
+  benchCapsByLevel[1] = totalBenchSlots > 0 ? Math.min(totalCounts[1], MAX_BENCH_L1) : 0
+  benchCapsByLevel[2] = totalBenchSlots > 0 ? totalCounts[2] : 0
+  benchCapsByLevel[3] = totalBenchSlots > 0 ? Math.min(totalCounts[3], maxBenchL3) : 0
 
   const benchTargetsByLevel = { ...fixedBenchCounts }
   let remainingBenchSlots = Math.max(0, pool.length - fieldSlots)
@@ -182,6 +191,7 @@ function buildBenchLevelContext(
 
     for (const level of PLAYER_LEVELS) {
       if (benchTargetsByLevel[level] >= totalCounts[level]) continue
+      if (benchTargetsByLevel[level] >= benchCapsByLevel[level]) continue
 
       if (selectedLevel === null) {
         selectedLevel = level
