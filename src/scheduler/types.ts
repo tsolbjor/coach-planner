@@ -13,8 +13,15 @@ export interface SchedulerOutput {
   warnings: SchedulerWarning[]
 }
 
+export type SchedulerWarningKind =
+  | 'low-player-count'
+  | 'keeper-unavailable'
+  | 'bench-rotation-impossible'
+  | 'l1-cap-infeasible'
+  | 'lock-conflict'
+
 export interface SchedulerWarning {
-  kind: 'low-player-count' | 'keeper-unavailable' | 'bench-rotation-impossible'
+  kind: SchedulerWarningKind
   message: string
 }
 
@@ -26,23 +33,3 @@ export interface Segment {
   endMinute: number
 }
 
-export interface PlayerScore {
-  playerId: string
-  /** Minutes played in outfield positions */
-  fieldMinutes: number
-  /** Minutes played as goalkeeper */
-  keeperMinutes: number
-  /** Consecutive segments currently on bench (resets when player takes the field) */
-  consecutiveBench: number
-  /** Consecutive segments currently on the field (resets when player goes to bench) */
-  consecutiveFieldSegments: number
-  /** Total segments spent on bench across the match */
-  benchSegments: number
-  /** Consecutive segments as keeper */
-  consecutiveKeeperSegments: number
-  /**
-   * The segmentIndex of the last time this player was benched (-1 = never).
-   * Used as a FIFO tiebreaker: whoever was benched longest ago is benched again first.
-   */
-  lastBenchedSegment: number
-}

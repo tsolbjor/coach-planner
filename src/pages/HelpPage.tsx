@@ -5,8 +5,8 @@ const sections = [
   {
     title: 'What The Plan Optimizes',
     points: [
-      'The planner builds a full segment-by-segment rotation from your players, positions, match length, bench cadence, and role eligibility.',
-      'It tries to keep minutes balanced across the squad while still filling every lineup slot with an eligible player.',
+      'The planner builds a full segment-by-segment rotation from your players, positions, match length, bench cadence, role eligibility, and player levels.',
+      'It balances total pitch time across the squad (keeper time counts as pitch time) while still filling every lineup slot with an eligible player.',
       'The same input produces the same result. When you change the setup, the plan regenerates automatically.',
     ],
   },
@@ -14,26 +14,38 @@ const sections = [
     title: 'How Rotation Works',
     points: [
       'The match is split into segments based on "Minutes on bench". A 40-minute match with 5-minute stints becomes 8 segments.',
-      'For each segment, the planner decides who is on the field, who is on the bench, and which player fills each position.',
-      'Within each period, players usually stay in the same position until they are subbed off.',
-      'At period and match boundaries, the planner intentionally rebalances positions to increase role variety.',
-      'Players who have been benched recently are given lower bench priority, so the planner pushes toward fair bench usage over the full plan.',
+      'For each segment, the planner picks who sits on the bench, then fills the remaining field slots with eligible players.',
+      'Bench priority leans on whoever has the most pitch time so far, with fewer bench appearances as a tiebreaker — pitch time stays even across the plan.',
+      'After a player comes off the bench they get at least 2 field segments before they can be benched again (no back-to-back bench, and no bench-skip-bench).',
+      'Match-start and match-end fairness: across multiple matches, players who have already started or ended on the bench are pushed down the bench list at those boundaries.',
+      'Bench history resets between matches, so the 2-segment field minimum applies within a match only.',
     ],
   },
   {
-    title: 'Position Eligibility',
+    title: 'Player Levels (L1 / L2 / L3)',
+    points: [
+      'Each player gets a level on the Players step: L1 (top), L2 (default), L3 (developing).',
+      'At most one L1 player sits on the bench in any single segment, so your strongest players are rarely off the field together.',
+      'If you have too many L1 players to fit (more than field size + 1), the planner will warn that the cap cannot be honoured.',
+      'Levels affect bench selection only — they do not change position eligibility.',
+    ],
+  },
+  {
+    title: 'Position Continuity & Eligibility',
     points: [
       'On the Players step, every position chip is selected by default. Deselect a chip only when that player should never play there.',
+      'Within a period, returning field players keep their previous slot; bench-in players take the vacated slots.',
+      'At period and match boundaries, the planner re-matches positions from scratch to increase role variety.',
       'The planner will never assign a player to a position they have opted out of.',
-      'Players who cannot play any outfield position (e.g., goalkeeper-only) are automatically benched when not in their eligible role.',
     ],
   },
   {
     title: 'Goalkeeper Logic',
     points: [
-      'The goalkeeper role has a configurable "Rotate every" value (in minutes) that controls how long each goalkeeper stays before rotating.',
-      'A player is eligible for goalkeeper if the GK chip stays selected on the Players page.',
-      'When the goalkeeper changes during a period, the planner prefers bringing the new keeper in from the bench and resting the outgoing keeper when there is room.',
+      'The goalkeeper role has a configurable "Rotate every" value (in minutes) that controls how long each keeper stays before rotating.',
+      'One keeper is designated per period; the bench picker keeps that keeper on the field for the whole period.',
+      'The planner picks each period\'s keeper from players whose GK chip is still selected, preferring whoever has accumulated the fewest keeper segments.',
+      'At least one keeper-eligible player is always kept on the field. If that conflicts with the L1 cap or rotation rules, the planner relaxes those rules and warns you.',
     ],
   },
   {
@@ -41,13 +53,14 @@ const sections = [
     points: [
       'Tap a slot in the generated plan to edit it manually. Saving locks the slot so it is preserved on regeneration.',
       'Locked slots show a lock icon. Tap "Back to auto" to release a locked slot and let the planner recalculate it.',
+      'A locked keeper assignment governs the whole period it belongs to.',
       'The plan regenerates automatically when you lock or release a slot.',
     ],
   },
   {
     title: 'When The Plan Regenerates',
     points: [
-      'The plan regenerates when you change the roster, absences, bench stint length, match count, or position eligibility.',
+      'The plan regenerates when you change the roster, player levels, position eligibility, bench stint length, match count, or keeper rotation interval.',
       'Locking or releasing a slot also triggers regeneration.',
       'If there are no active players left, the generated plan is cleared instead of showing stale assignments.',
     ],

@@ -1,232 +1,113 @@
 import { nanoid } from 'nanoid'
 import type { TimeSlot } from '../types'
-import type { SchedulerInput, SchedulerOutput, PlayerScore } from './types'
+import type { SchedulerInput, SchedulerOutput, SchedulerWarning } from './types'
 import { buildSegments } from './segmentBuilder'
-import { assignKeeper } from './keeperRotation'
-import { assignField } from './fieldRotation'
+import { checkFeasibility } from './feasibility'
+import { planKeepers } from './keeperPlan'
+import { scheduleBench, type LockedBench } from './benchSchedule'
+import { assignPositions } from './positionAssign'
 
 export function generatePlan(input: SchedulerInput): SchedulerOutput {
   const { sportConfig, players, benchStintMinutes, matchCount = 1, existingSlots = [] } = input
-  const warnings: SchedulerOutput['warnings'] = []
+  const warnings: SchedulerWarning[] = []
 
   if (players.length === 0) {
     return { slots: [], warnings: [{ kind: 'low-player-count', message: 'No players in roster.' }] }
   }
 
-  const segments = buildSegments(sportConfig, benchStintMinutes, matchCount)
-  const segmentDuration = segments.length > 0 ? (segments[0]!.endMinute - segments[0]!.startMinute) : benchStintMinutes
-  const keeperSlot = sportConfig.lineupSlots.find((s) => {
-    const pt = sportConfig.positionTypes.find((pt) => pt.id === s.positionTypeId)
-    return pt?.isKeeper
-  })
-  const keeperSlotId = keeperSlot?.slotId ?? null
-  const keeperPositionTypeId = keeperSlot?.positionTypeId ?? null
-  const keeperMinSegments = (() => {
-    if (!keeperSlot) return 1
-    const pt = sportConfig.positionTypes.find((p) => p.id === keeperSlot.positionTypeId)
-    const rotateEvery = pt?.rotateEveryMinutes ?? 0
-    return rotateEvery > 0 ? Math.max(1, Math.round(rotateEvery / segmentDuration)) : 1
-  })()
-
-  // Warn early if bench rotation is mathematically impossible
-  const benchSpotsPerSeg = players.length - sportConfig.totalOnField
-  const totalBenchSlots = segments.length * benchSpotsPerSeg
-  if (benchSpotsPerSeg <= 0) {
-    warnings.push({
-      kind: 'bench-rotation-impossible',
-      message: 'Every player is needed on the field — no one can be benched. Add more players to allow rotation.',
-    })
-  } else if (totalBenchSlots < players.length) {
-    warnings.push({
-      kind: 'bench-rotation-impossible',
-      message: `Only ${totalBenchSlots} bench stints across the match for ${players.length} players — not everyone can sit out once. Increase substitutions or add players.`,
-    })
-  }
-
-  // Initialise scores
-  const scores = new Map<string, PlayerScore>()
-  for (const p of players) {
-    scores.set(p.id, {
-      playerId: p.id,
-      fieldMinutes: 0,
-      keeperMinutes: 0,
-      consecutiveBench: 0,
-      consecutiveFieldSegments: 0,
-      benchSegments: 0,
-      consecutiveKeeperSegments: 0,
-      lastBenchedSegment: -1,
-    })
-  }
-
-  let lastKeeperPlayerId: string | null = null
-  let previousAssignments: Record<string, string | null> | null = null
-
-  // Pre-populate scores from locked existing slots
-  const lockedSlots = existingSlots.filter((s) => s.locked)
-  for (const slot of lockedSlots) {
-    const duration = slot.endMinute - slot.startMinute
-    for (const [, playerId] of Object.entries(slot.assignments)) {
-      if (!playerId) continue
-      const score = scores.get(playerId)
-      if (!score) continue
-      if (keeperSlotId && slot.assignments[keeperSlotId] === playerId) {
-        score.keeperMinutes += duration
-      } else {
-        score.fieldMinutes += duration
-      }
-      score.consecutiveBench = 0
-    }
-    for (const benchId of slot.bench) {
-      const score = scores.get(benchId)
-      if (score) {
-        score.consecutiveBench++
-        score.benchSegments++
-        const matchedSeg = segments.find(
-          (seg) =>
-            seg.startMinute === slot.startMinute &&
-            seg.periodIndex === slot.periodIndex &&
-            seg.matchIndex === (slot.matchIndex ?? 0),
-        )
-        if (matchedSeg) score.lastBenchedSegment = matchedSeg.segmentIndex
-      }
-    }
-  }
-
-  const lockedBySegment = new Map(
-    lockedSlots.map((s) => [
-      segments.find(
-        (seg) =>
-          seg.startMinute === s.startMinute &&
-          seg.periodIndex === s.periodIndex &&
-          seg.matchIndex === (s.matchIndex ?? 0),
-      )?.segmentIndex ?? -1,
-      s,
-    ]),
+  warnings.push(
+    ...checkFeasibility({
+      sportConfig,
+      players,
+      benchStintMinutes,
+      matchCount,
+      existingSlots,
+    }),
   )
 
-  const resultSlots: TimeSlot[] = []
-  let currentMatchIndex = -1
-
+  const segments = buildSegments(sportConfig, benchStintMinutes, matchCount)
+  const segmentByLocation = new Map<string, number>()
   for (const seg of segments) {
-    // At each match boundary: reset per-match keeper state so each game starts fresh.
-    // Accumulated pitch/bench minutes carry over for cross-match fairness.
-    if (seg.matchIndex !== currentMatchIndex) {
-      currentMatchIndex = seg.matchIndex
-      lastKeeperPlayerId = null
-      previousAssignments = null
-      for (const score of scores.values()) {
-        score.consecutiveKeeperSegments = 0
-        score.consecutiveFieldSegments = 0
-      }
-    }
+    segmentByLocation.set(`${seg.matchIndex}:${seg.periodIndex}:${seg.startMinute}`, seg.segmentIndex)
+  }
 
-    const previousSlot = resultSlots[resultSlots.length - 1] ?? null
-    const samePeriodAsPrevious = previousSlot !== null
-      && previousSlot.matchIndex === seg.matchIndex
-      && previousSlot.periodIndex === seg.periodIndex
-    const segmentContinuityAssignments = samePeriodAsPrevious ? previousAssignments : null
-    const boundaryRotationOffset = samePeriodAsPrevious
-      ? 0
-      : ((seg.matchIndex * sportConfig.periodCount) + seg.periodIndex) % Math.max(1, sportConfig.totalOnField)
+  const keeperSlotId =
+    sportConfig.lineupSlots.find((s) => {
+      const pt = sportConfig.positionTypes.find((p) => p.id === s.positionTypeId)
+      return pt?.isKeeper
+    })?.slotId ?? null
 
-    const locked = lockedBySegment.get(seg.segmentIndex)
-    if (locked) {
-      resultSlots.push(locked)
-      lastKeeperPlayerId = keeperSlotId ? (locked.assignments[keeperSlotId] ?? null) : null
-      previousAssignments = locked.assignments
-      // Update consecutiveFieldSegments in segment order (not done in pre-population)
-      const fieldPlayerIds = new Set(Object.values(locked.assignments).filter(Boolean))
-      for (const score of scores.values()) {
-        if (fieldPlayerIds.has(score.playerId)) {
-          score.consecutiveFieldSegments++
-        } else {
-          score.consecutiveFieldSegments = 0
-        }
-      }
-      continue
-    }
+  const lockedBench = new Map<number, LockedBench>()
+  const lockedKeeper = new Map<number, string | null>()
+  const lockedAssignments = new Map<number, Record<string, string | null>>()
+  const lockedSlotById = new Map<number, TimeSlot>()
+  for (const slot of existingSlots) {
+    if (!slot.locked) continue
+    const segIdx = segmentByLocation.get(`${slot.matchIndex}:${slot.periodIndex}:${slot.startMinute}`)
+    if (segIdx === undefined) continue
+    lockedBench.set(segIdx, {
+      bench: [...slot.bench],
+      field: new Set(Object.values(slot.assignments).filter((v): v is string => v !== null)),
+    })
+    lockedAssignments.set(segIdx, { ...slot.assignments })
+    if (keeperSlotId) lockedKeeper.set(segIdx, slot.assignments[keeperSlotId] ?? null)
+    lockedSlotById.set(segIdx, slot)
+  }
 
-    // Keeper assignment
-    const previousBenchIds = samePeriodAsPrevious && previousSlot ? previousSlot.bench : []
-    const keeperPlayerId = keeperSlotId && keeperPositionTypeId
-      ? assignKeeper(
-          players,
-          scores,
-          keeperPositionTypeId,
-          lastKeeperPlayerId,
-          keeperMinSegments,
-          previousBenchIds,
-          samePeriodAsPrevious,
-          warnings,
-        )
-      : null
-    const forcedBenchPlayerIds =
-      samePeriodAsPrevious && lastKeeperPlayerId && keeperPlayerId && keeperPlayerId !== lastKeeperPlayerId
-        && players.length > sportConfig.totalOnField
-        ? [lastKeeperPlayerId]
-        : []
-    lastKeeperPlayerId = keeperPlayerId
+  const keeperResult = planKeepers({ sportConfig, players, segments, lockedKeeper })
+  warnings.push(...keeperResult.warnings)
 
-    // Field player assignment
-    const { assignments, bench } = assignField(
-      players,
-      sportConfig.lineupSlots,
-      keeperSlotId,
-      keeperPlayerId,
-      forcedBenchPlayerIds,
-      scores,
-      segmentContinuityAssignments,
-      boundaryRotationOffset,
-    )
+  const forcedField = new Map<number, Set<string>>()
+  for (const seg of segments) {
+    const id = keeperResult.keeperByPeriod.get(`${seg.matchIndex}:${seg.periodIndex}`)
+    if (id) forcedField.set(seg.segmentIndex, new Set([id]))
+  }
 
-    const dur = seg.endMinute - seg.startMinute
+  const benchResult = scheduleBench({
+    sportConfig,
+    players,
+    segments,
+    locks: lockedBench,
+    forcedField,
+  })
+  warnings.push(...benchResult.warnings)
 
-    // Update scores
-    const fieldPlayerIds = new Set(Object.values(assignments).filter(Boolean))
-    for (const [slotId, playerId] of Object.entries(assignments)) {
-      if (!playerId) continue
-      const score = scores.get(playerId)
-      if (!score) continue
-      if (slotId === keeperSlotId) {
-        score.keeperMinutes += dur
-        score.consecutiveKeeperSegments++
-      } else {
-        score.fieldMinutes += dur
-        score.consecutiveKeeperSegments = 0
-      }
-      score.consecutiveBench = 0
-      score.consecutiveFieldSegments++
-    }
-    for (const benchId of bench) {
-      const score = scores.get(benchId)
-      if (score) {
-        score.consecutiveBench++
-        score.benchSegments++
-        score.consecutiveKeeperSegments = 0
-        score.consecutiveFieldSegments = 0
-        score.lastBenchedSegment = seg.segmentIndex
-      }
-    }
+  const positionResult = assignPositions({
+    sportConfig,
+    players,
+    segments,
+    benchBySegment: benchResult.benchBySegment,
+    keeperByPeriod: keeperResult.keeperByPeriod,
+    lockedAssignments,
+  })
+  warnings.push(...positionResult.warnings)
 
-    resultSlots.push({
+  const resultSlots: TimeSlot[] = segments.map((seg) => {
+    const locked = lockedSlotById.get(seg.segmentIndex)
+    if (locked) return locked
+    return {
       id: nanoid(8),
       matchIndex: seg.matchIndex,
       periodIndex: seg.periodIndex,
       startMinute: seg.startMinute,
       endMinute: seg.endMinute,
-      assignments,
-      bench,
+      assignments: positionResult.assignmentsBySegment.get(seg.segmentIndex) ?? {},
+      bench: benchResult.benchBySegment[seg.segmentIndex] ?? [],
       locked: false,
-    })
-    previousAssignments = assignments
-  }
+    }
+  })
 
-  if (players.length < sportConfig.totalOnField) {
-    warnings.push({
-      kind: 'low-player-count',
-      message: `Only ${players.length} players available, need ${sportConfig.totalOnField} on field. Some positions will be empty.`,
-    })
-  }
+  return { slots: resultSlots, warnings: dedupeWarnings(warnings) }
+}
 
-  return { slots: resultSlots, warnings }
+function dedupeWarnings(warnings: SchedulerWarning[]): SchedulerWarning[] {
+  const seen = new Set<string>()
+  const out: SchedulerWarning[] = []
+  for (const w of warnings) {
+    const key = `${w.kind}::${w.message}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(w)
+  }
+  return out
 }
