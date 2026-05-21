@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from 'nanoid'
-import { normalizePlayerLevel, type SavedItem, type MatchPlan, type TournamentPlan, type Player, type TimeSlot } from '../types'
+import { normalizePlayerLevel, type SavedItem, type MatchPlan, type TournamentPlan, type Player } from '../types'
 
 interface SavedPlansState {
   items: SavedItem[]
@@ -20,8 +20,6 @@ interface SavedPlansState {
   addMatchPlayer: (planId: string, player: Omit<Player, 'id'>) => void
   updateMatchPlayer: (planId: string, playerId: string, updates: Partial<Omit<Player, 'id'>>) => void
   removeMatchPlayer: (planId: string, playerId: string) => void
-  /** Per-plan slot update */
-  updateMatchSlot: (planId: string, slotId: string, updates: Partial<TimeSlot>) => void
 }
 
 function savedId(item: SavedItem): string {
@@ -153,15 +151,6 @@ export const useSavedPlansStore = create<SavedPlansState>()(
           items: patchMatch(s.items, planId, (plan) => ({
             ...plan,
             roster: plan.roster.filter((p) => p.id !== playerId),
-            updatedAt: new Date().toISOString(),
-          })),
-        })),
-
-      updateMatchSlot: (planId, slotId, updates) =>
-        set((s) => ({
-          items: patchMatch(s.items, planId, (plan) => ({
-            ...plan,
-            slots: plan.slots.map((sl) => (sl.id === slotId ? { ...sl, ...updates } : sl)),
             updatedAt: new Date().toISOString(),
           })),
         })),

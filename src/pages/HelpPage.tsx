@@ -49,19 +49,10 @@ const sections = [
     ],
   },
   {
-    title: 'Locking & Releasing Slots',
-    points: [
-      'Tap a slot in the generated plan to edit it manually. Saving locks the slot so it is preserved on regeneration.',
-      'Locked slots show a lock icon. Tap "Back to auto" to release a locked slot and let the planner recalculate it.',
-      'A locked keeper assignment governs the whole period it belongs to.',
-      'The plan regenerates automatically when you lock or release a slot.',
-    ],
-  },
-  {
     title: 'When The Plan Regenerates',
     points: [
       'The plan regenerates when you change the roster, player levels, position eligibility, bench stint length, match count, or keeper rotation interval.',
-      'Locking or releasing a slot also triggers regeneration.',
+      'The generated plan is visible on the Full Timeline step.',
       'If there are no active players left, the generated plan is cleared instead of showing stale assignments.',
     ],
   },

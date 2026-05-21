@@ -5,19 +5,17 @@ import { DEFAULT_PLAYER_LEVEL, normalizePlayerLevel } from '../types'
 import { buildShareUrl } from '../utils/shareUrl'
 import { generatePlan } from '../scheduler'
 import { useSavedPlansStore } from '../store'
-import type { MatchPlan, Player, TimeSlot } from '../types'
+import type { MatchPlan, Player } from '../types'
 import { AppShell } from '../components/common/AppShell'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { NumberStepper } from '../components/common/NumberStepper'
 import { PageHeader } from '../components/common/PageHeader'
 import { buildTopFlowItems } from '../components/common/TopFlowNav'
-import { SlotCard } from '../components/planner/SlotCard'
 import { SubstitutionSettings } from '../components/planner/SubstitutionSettings'
-import { computeSubDiff, buildComingOnPositions } from '../components/planner/SubMarker'
 import { PlayerListItem } from '../components/roster/PlayerListItem'
 
-type PlanStep = 'roster' | 'planner' | 'generated'
+type PlanStep = 'roster' | 'planner'
 type PositionRow = {
   id: string
   label: string
@@ -26,7 +24,7 @@ type PositionRow = {
 }
 
 function getPlanStep(value: string | null): PlanStep {
-  if (value === 'roster' || value === 'generated') return value
+  if (value === 'roster') return value
   return 'planner'
 }
 
@@ -114,19 +112,6 @@ function buildRosterForTotalPlayers(roster: MatchPlan['roster'], totalPlayers: n
     })
   }
   return next
-}
-
-function buildSlotsByMatchByPeriod(slots: TimeSlot[], matchCount: number, periodCount: number) {
-  const matches: TimeSlot[][][] = Array.from({ length: matchCount }, () =>
-    Array.from({ length: periodCount }, () => []),
-  )
-
-  for (const slot of slots) {
-    const matchIndex = slot.matchIndex ?? 0
-    matches[matchIndex]?.[slot.periodIndex]?.push(slot)
-  }
-
-  return matches
 }
 
 function buildGenerationSignature(
@@ -471,129 +456,6 @@ function PlannerStep({
   )
 }
 
-function GeneratedStep({
-  planId,
-  plan,
-}: {
-  planId: string
-  plan: MatchPlan
-}) {
-  const { updateMatch, updateMatchSlot } = useSavedPlansStore()
-  const [editingSlotId, setEditingSlotId] = useState<string | null>(null)
-  const [shareCopied, setShareCopied] = useState(false)
-
-  const handleShare = () => {
-    const url = buildShareUrl(plan)
-    navigator.clipboard.writeText(url)
-      .then(() => {
-        setShareCopied(true)
-        setTimeout(() => setShareCopied(false), 2000)
-      })
-      .catch(() => alert('Copy failed — try again'))
-  }
-
-  const { sportConfig, roster, slots, benchStintMinutes, matchCount, absentPlayerIds } = plan
-
-  const activePlayers = useMemo(
-    () => roster.filter((player) => !absentPlayerIds.includes(player.id)),
-    [roster, absentPlayerIds],
-  )
-
-  const totalPlanMinutes = matchCount * sportConfig.periodCount * sportConfig.periodDurationMinutes
-
-  const playerMinutes = useMemo(() => {
-    const minutes = new Map<string, number>()
-    for (const player of roster) minutes.set(player.id, 0)
-    for (const slot of slots) {
-      const duration = slot.endMinute - slot.startMinute
-      for (const playerId of Object.values(slot.assignments)) {
-        if (playerId) minutes.set(playerId, (minutes.get(playerId) ?? 0) + duration)
-      }
-    }
-    return minutes
-  }, [slots, roster])
-
-  const handleSlotSave = (slotId: string, updates: Pick<TimeSlot, 'assignments' | 'bench' | 'locked'>) => {
-    updateMatchSlot(planId, slotId, updates)
-    setEditingSlotId(null)
-  }
-
-  const handleSlotRelease = (slotId: string) => {
-    updateMatchSlot(planId, slotId, { locked: false })
-  }
-
-  const slotsByMatchByPeriod = useMemo(
-    () => buildSlotsByMatchByPeriod(slots, matchCount, sportConfig.periodCount),
-    [slots, matchCount, sportConfig.periodCount],
-  )
-
-  if (slots.length === 0) {
-    return (
-      <Card className="space-y-3">
-        <div>
-          <p className="text-sm font-semibold text-slate-800">No generated plan yet</p>
-          <p className="text-sm text-slate-500">Generate the plan in the planner step first.</p>
-        </div>
-      </Card>
-    )
-  }
-
-  return (
-    <div className="space-y-4">
-      {slotsByMatchByPeriod.map((periods, matchIndex) => (
-        <div key={matchIndex}>
-          {matchCount > 1 && (
-            <h2 className="mt-2 mb-1 text-sm font-bold text-slate-700">Match {matchIndex + 1}</h2>
-          )}
-          {periods.map((periodSlots, periodIndex) => (
-            <div key={periodIndex} className="mb-4">
-              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {sportConfig.periodCount > 1 ? `Half ${periodIndex + 1}` : 'Full match'}
-              </h3>
-              <div className="space-y-2">
-                {periodSlots.map((slot, slotIndex) => {
-                  const nextSlot = periodSlots[slotIndex + 1]
-                  const diff = nextSlot ? computeSubDiff(slot, nextSlot) : null
-                  const goingOffNextIds = diff ? new Set(diff.goingOff) : undefined
-                  const comingOnNextPositions = nextSlot
-                    ? buildComingOnPositions(nextSlot, diff?.comingOn ?? [], sportConfig)
-                    : undefined
-
-                  return (
-                    <SlotCard
-                      key={slot.id}
-                      slot={slot}
-                      sportConfig={sportConfig}
-                      players={activePlayers}
-                      playerMinutes={playerMinutes}
-                      totalMinutes={totalPlanMinutes}
-                      isEditing={editingSlotId === slot.id}
-                      comingOnNextPositions={comingOnNextPositions}
-                      goingOffNextIds={goingOffNextIds}
-                      onEdit={() => setEditingSlotId(slot.id)}
-                      onSave={(updates) => handleSlotSave(slot.id, updates)}
-                      onRelease={() => handleSlotRelease(slot.id)}
-                      onCancel={() => setEditingSlotId(null)}
-                    />
-                  )
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      ))}
-
-      <Button
-        variant="secondary"
-        onClick={handleShare}
-        fullWidth
-      >
-        {shareCopied ? 'Link copied!' : 'Copy share link'}
-      </Button>
-    </div>
-  )
-}
-
 export function PlanPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -628,8 +490,15 @@ export function PlanPage() {
   }
 
   const plan = item.plan
-  const step = getPlanStep(searchParams.get('step'))
-  const buildPlanPath = (targetStep: PlanStep) => `/plan/${id}?step=${targetStep}`
+  const stepParam = searchParams.get('step')
+  const step = getPlanStep(stepParam)
+
+  useEffect(() => {
+    if (stepParam === 'generated') {
+      navigate(`/plan/${id}/view`, { replace: true })
+    }
+  }, [stepParam, id, navigate])
+
   const activePlayers = useMemo(
     () => plan.roster.filter((player) => !plan.absentPlayerIds.includes(player.id)),
     [plan.roster, plan.absentPlayerIds],
@@ -747,9 +616,6 @@ export function PlanPage() {
           plan={plan}
           warnings={warnings}
         />
-      )}
-      {step === 'generated' && (
-        <GeneratedStep planId={id} plan={plan} />
       )}
     </AppShell>
   )

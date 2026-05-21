@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 
-export type FlowStep = 'home' | 'roster' | 'planner' | 'generated' | 'full'
+export type FlowStep = 'home' | 'roster' | 'planner' | 'full'
 
 export interface TopFlowNavItem {
   label: string
@@ -18,7 +18,6 @@ const flowLabels: Record<FlowStep, string> = {
   home: 'Home',
   planner: 'Rotation Setup',
   roster: 'Players',
-  generated: 'Review Plan',
   full: 'Full Timeline',
 }
 
@@ -35,12 +34,6 @@ export function buildTopFlowItems(planId?: string, activeStep?: FlowStep): TopFl
       label: flowLabels.roster,
       to: planId ? `/plan/${planId}?step=roster` : undefined,
       active: activeStep === 'roster',
-      disabled: !planId,
-    },
-    {
-      label: flowLabels.generated,
-      to: planId ? `/plan/${planId}?step=generated` : undefined,
-      active: activeStep === 'generated',
       disabled: !planId,
     },
     {
