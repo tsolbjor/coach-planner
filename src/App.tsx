@@ -3,7 +3,6 @@ import { HomePage } from './pages/HomePage'
 import { HelpModal } from './pages/HelpPage'
 import { ImportPage } from './pages/ImportPage'
 import { PlanPage } from './pages/PlanPage'
-import { PlanViewPage } from './pages/PlanViewPage'
 
 function RootLayout() {
   const location = useLocation()
@@ -14,10 +13,13 @@ function RootLayout() {
   const closeHelp = () => {
     const nextParams = new URLSearchParams(location.search)
     nextParams.delete('help')
-    navigate({
-      pathname: location.pathname,
-      search: nextParams.size > 0 ? `?${nextParams.toString()}` : '',
-    }, { replace: true })
+    navigate(
+      {
+        pathname: location.pathname,
+        search: nextParams.size > 0 ? `?${nextParams.toString()}` : '',
+      },
+      { replace: true },
+    )
   }
 
   return (
@@ -36,7 +38,6 @@ const router = createHashRouter([
       { index: true, element: <HomePage /> },
       { path: 'import', element: <ImportPage /> },
       { path: 'plan/:id', element: <PlanPage /> },
-      { path: 'plan/:id/view', element: <PlanViewPage /> },
     ],
   },
 ])

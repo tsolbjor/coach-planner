@@ -5,55 +5,55 @@ const sections = [
   {
     title: 'What The Plan Optimizes',
     points: [
-      'The planner builds a full segment-by-segment rotation from your players, positions, match length, bench cadence, role eligibility, and player levels.',
-      'It balances total pitch time across the squad (keeper time counts as pitch time) while still filling every lineup slot with an eligible player.',
-      'The same input produces the same result. When you change the setup, the plan regenerates automatically.',
+      'The planner builds a full segment-by-segment rotation from your players, sport setup, bench cadence, role eligibility, and player levels.',
+      'It balances total pitch time across the squad (keeper time counts as pitch time) and rotates each player through their relevant positions across periods and matches.',
+      'Same input → same plan. Change anything in Setup or Players and the plan re-generates automatically.',
     ],
   },
   {
     title: 'How Rotation Works',
     points: [
-      'The match is split into segments based on "Minutes on bench". A 40-minute match with 5-minute stints becomes 8 segments.',
-      'For each segment, the planner picks who sits on the bench, then fills the remaining field slots with eligible players.',
-      'Bench priority leans on whoever has the most pitch time so far, with fewer bench appearances as a tiebreaker — pitch time stays even across the plan.',
-      'After a player comes off the bench they get at least 2 field segments before they can be benched again (no back-to-back bench, and no bench-skip-bench).',
-      'Match-start and match-end fairness: across multiple matches, players who have already started or ended on the bench are pushed down the bench list at those boundaries.',
-      'Bench history resets between matches, so the 2-segment field minimum applies within a match only.',
+      'The match is split into segments based on "Minutes on bench". A 40-min match with 5-min stints becomes 8 segments.',
+      'For each segment, the planner picks who sits on the bench then fills the remaining field slots with eligible players.',
+      'Bench priority leans on whoever has the most pitch time so far, with fewer bench appearances as a tiebreaker.',
+      'After a player comes off the bench they get at least 2 field segments before they can be benched again.',
+      'Match-start and match-end fairness: players who have already started or ended on the bench drop down the bench list at those boundaries.',
+      'Bench history resets between matches.',
     ],
   },
   {
     title: 'Player Levels (L1 / L2 / L3)',
     points: [
-      'Each player gets a level on the Players step: L1 (top), L2 (default), L3 (developing).',
-      'At most one L1 player sits on the bench in any single segment, so your strongest players are rarely off the field together.',
-      'If you have too many L1 players to fit (more than field size + 1), the planner will warn that the cap cannot be honoured.',
-      'Levels affect bench selection only — they do not change position eligibility.',
+      'On the Players modal, each player gets a level: L1 (top), L2 (default), L3 (developing).',
+      'At most one L1 player sits on the bench in any single segment.',
+      'If you have too many L1 players to fit (more than field size + 1), the planner warns that the cap cannot be honoured.',
     ],
   },
   {
     title: 'Position Continuity & Eligibility',
     points: [
-      'On the Players step, every position chip is selected by default. Deselect a chip only when that player should never play there.',
+      'Every position chip in Players is selected by default. Deselect a chip only when that player should never play there.',
       'Within a period, returning field players keep their previous slot; bench-in players take the vacated slots.',
-      'At period and match boundaries, the planner re-matches positions from scratch to increase role variety.',
+      'At period and match boundaries, the planner re-matches positions to rotate each player through their relevant positions.',
       'The planner will never assign a player to a position they have opted out of.',
     ],
   },
   {
-    title: 'Goalkeeper Logic',
+    title: 'Goalkeeper & Mid-Period Swap',
     points: [
-      'The goalkeeper role has a configurable "Rotate every" value (in minutes) that controls how long each keeper stays before rotating.',
-      'One keeper is designated per period; the bench picker keeps that keeper on the field for the whole period.',
+      'One keeper is designated per period. The bench picker keeps that keeper on the field for the whole period.',
+      'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period. The new keeper comes from the bench.',
+      'For odd-segment periods, the swap happens in the middle of the swap segment so the new keeper gets half-segment prep on the bench first.',
       'The planner picks each period\'s keeper from players whose GK chip is still selected, preferring whoever has accumulated the fewest keeper segments.',
-      'At least one keeper-eligible player is always kept on the field. If that conflicts with the L1 cap or rotation rules, the planner relaxes those rules and warns you.',
     ],
   },
   {
-    title: 'When The Plan Regenerates',
+    title: 'Editing Plan In Place',
     points: [
-      'The plan regenerates when you change the roster, player levels, position eligibility, bench stint length, match count, or keeper rotation interval.',
-      'The generated plan is visible on the Full Timeline step.',
-      'If there are no active players left, the generated plan is cleared instead of showing stale assignments.',
+      'Click any cell in the timeline to swap roles (field ↔ bench, change GK) at that exact segment.',
+      'Mark a player absent for this segment, rest of period, or rest of match. Toggle "counts as field time" if the absence should still credit pitch-time fairness.',
+      'Each edit becomes a "pin". The solver respects pins and re-balances forward from that segment.',
+      'Clear a single pin from the Segment editor, or clear all pins from the header.',
     ],
   },
 ]
@@ -62,7 +62,7 @@ function HelpContent() {
   return (
     <>
       <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-slate-700">
-        The planner is built to be mobile-first, but the core logic is deterministic: same setup in, same plan out.
+        The planner is built to be mobile-first; the core logic is deterministic: same setup in, same plan out.
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">

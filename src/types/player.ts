@@ -9,8 +9,6 @@ export function normalizePlayerLevel(level: number | null | undefined): PlayerLe
 export interface Player {
   id: string
   name: string
-  /** Optional shirt number */
-  number?: number
   /** Relative player level used when balancing bench groups */
   level: PlayerLevel
   /** PositionType.id[] — positions this player should not be assigned to */

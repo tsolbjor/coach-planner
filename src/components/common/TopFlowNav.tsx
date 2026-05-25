@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 
-export type FlowStep = 'home' | 'roster' | 'planner' | 'full'
+export type FlowStep = 'home' | 'plan'
 
 export interface TopFlowNavItem {
   label: string
@@ -16,30 +16,16 @@ interface TopFlowNavProps {
 
 const flowLabels: Record<FlowStep, string> = {
   home: 'Home',
-  planner: 'Setup',
-  roster: 'Players',
-  full: 'Full Timeline',
+  plan: 'Plan',
 }
 
 export function buildTopFlowItems(planId?: string, activeStep?: FlowStep): TopFlowNavItem[] {
   return [
     { label: flowLabels.home, to: '/', active: activeStep === 'home' },
     {
-      label: flowLabels.planner,
-      to: planId ? `/plan/${planId}?step=planner` : undefined,
-      active: activeStep === 'planner',
-      disabled: !planId,
-    },
-    {
-      label: flowLabels.roster,
-      to: planId ? `/plan/${planId}?step=roster` : undefined,
-      active: activeStep === 'roster',
-      disabled: !planId,
-    },
-    {
-      label: flowLabels.full,
-      to: planId ? `/plan/${planId}/view` : undefined,
-      active: activeStep === 'full',
+      label: flowLabels.plan,
+      to: planId ? `/plan/${planId}` : undefined,
+      active: activeStep === 'plan',
       disabled: !planId,
     },
   ]
@@ -59,7 +45,7 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
   return (
     <nav className={['mb-6 overflow-x-auto pb-1', className].join(' ')} aria-label="App flow">
       <div className="inline-flex min-w-full items-center gap-2 rounded-[1.75rem] border border-slate-200/80 bg-white/85 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur">
-        {items.map((item, index) => {
+        {items.map((item) => {
           const classes = [
             'inline-flex min-touch items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium whitespace-nowrap transition-all',
             item.active
@@ -68,27 +54,16 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
                 ? 'border-transparent bg-slate-100 text-slate-400'
                 : 'border-transparent bg-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900',
           ].join(' ')
-          const stepBadgeClasses = [
-            'inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold',
-            item.active
-              ? 'bg-white/15 text-white'
-              : item.disabled
-                ? 'bg-white text-slate-400'
-                : 'bg-slate-100 text-slate-600',
-          ].join(' ')
 
           if (item.to && !item.disabled) {
             return (
               <Link key={item.label} to={item.to} className={classes} aria-current={item.active ? 'page' : undefined}>
-                <span className={stepBadgeClasses}>{index + 1}</span>
                 {item.label}
               </Link>
             )
           }
-
           return (
             <span key={item.label} className={classes} aria-current={item.active ? 'page' : undefined}>
-              <span className={stepBadgeClasses}>{index + 1}</span>
               {item.label}
             </span>
           )
