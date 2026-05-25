@@ -7,9 +7,16 @@ interface SubstitutionSettingsProps {
   benchStintMinutes: number
   matchCount: number
   changeKeeperMidPeriod: boolean
+  maxBenchSegments: number
+  minSubsPerSegment: number
+  maxSubsPerSegment: number
+  benchSize: number
   onBenchStintChange: (n: number) => void
   onMatchCountChange: (n: number) => void
   onChangeKeeperMidPeriodChange: (next: boolean) => void
+  onMaxBenchSegmentsChange: (n: number) => void
+  onMinSubsPerSegmentChange: (n: number) => void
+  onMaxSubsPerSegmentChange: (n: number) => void
 }
 
 export function SubstitutionSettings({
@@ -17,14 +24,23 @@ export function SubstitutionSettings({
   benchStintMinutes,
   matchCount,
   changeKeeperMidPeriod,
+  maxBenchSegments,
+  minSubsPerSegment,
+  maxSubsPerSegment,
+  benchSize,
   onBenchStintChange,
   onMatchCountChange,
   onChangeKeeperMidPeriodChange,
+  onMaxBenchSegmentsChange,
+  onMinSubsPerSegmentChange,
+  onMaxSubsPerSegmentChange,
 }: SubstitutionSettingsProps) {
   const segmentsPerPeriod = Math.max(1, Math.round(sportConfig.periodDurationMinutes / benchStintMinutes))
   const actualStint = sportConfig.periodDurationMinutes / segmentsPerPeriod
   const stintLabel = Number.isInteger(actualStint) ? `${actualStint} min` : `${actualStint.toFixed(1)} min`
   const periodWord = sportConfig.periodCount > 1 ? 'half' : 'period'
+  const totalSegments = segmentsPerPeriod * sportConfig.periodCount
+  const benchSpots = Math.max(1, benchSize)
 
   return (
     <Card>
@@ -42,6 +58,33 @@ export function SubstitutionSettings({
         <p className="text-xs text-slate-500">
           → {segmentsPerPeriod} segment{segmentsPerPeriod !== 1 ? 's' : ''} × {stintLabel} per {periodWord}
         </p>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <NumberStepper
+            label="Max segments on bench"
+            value={maxBenchSegments}
+            min={1}
+            max={Math.max(1, totalSegments)}
+            onChange={onMaxBenchSegmentsChange}
+          />
+          <NumberStepper
+            label="Min subs per segment"
+            value={minSubsPerSegment}
+            min={0}
+            max={benchSpots}
+            onChange={onMinSubsPerSegmentChange}
+          />
+          <NumberStepper
+            label="Max subs per segment"
+            value={maxSubsPerSegment}
+            min={Math.max(1, minSubsPerSegment)}
+            max={benchSpots}
+            onChange={onMaxSubsPerSegmentChange}
+          />
+          <p className="text-xs text-slate-500">
+            Looser caps let some players stay on the bench across multiple segments and reduce per-segment churn.
+          </p>
+        </div>
 
         <div className="border-t border-slate-100 pt-4">
           <NumberStepper label="Matches" value={matchCount} min={1} max={10} onChange={onMatchCountChange} />

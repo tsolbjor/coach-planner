@@ -111,9 +111,16 @@ export function SetupModal({ plan, onClose }: SetupModalProps) {
           benchStintMinutes={plan.benchStintMinutes}
           matchCount={plan.matchCount}
           changeKeeperMidPeriod={plan.changeKeeperMidPeriod}
+          maxBenchSegments={plan.maxBenchSegments}
+          minSubsPerSegment={plan.minSubsPerSegment}
+          maxSubsPerSegment={plan.maxSubsPerSegment}
+          benchSize={benchSize}
           onBenchStintChange={(v) => updateMatch(plan.id, { benchStintMinutes: v })}
           onMatchCountChange={(v) => updateMatch(plan.id, { matchCount: v })}
           onChangeKeeperMidPeriodChange={(v) => updateMatch(plan.id, { changeKeeperMidPeriod: v })}
+          onMaxBenchSegmentsChange={(v) => updateMatch(plan.id, { maxBenchSegments: v })}
+          onMinSubsPerSegmentChange={(v) => updateMatch(plan.id, { minSubsPerSegment: v })}
+          onMaxSubsPerSegmentChange={(v) => updateMatch(plan.id, { maxSubsPerSegment: v })}
         />
 
         <Card padding={false}>

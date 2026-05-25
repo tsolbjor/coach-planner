@@ -9,6 +9,12 @@ export interface RotationSolverInput {
   pins: Record<number, SegmentPin>
   /** Swap keeper with a benched player at the period midpoint */
   changeKeeperMidPeriod?: boolean
+  /** Max consecutive segments a player can be on the bench (default 1). */
+  maxBenchSegments?: number
+  /** Min substitutions per segment boundary (default 0). */
+  minSubsPerSegment?: number
+  /** Max substitutions per segment boundary (default unlimited within bench size). */
+  maxSubsPerSegment?: number
 }
 
 export interface RotationSolverResult {
@@ -16,7 +22,7 @@ export interface RotationSolverResult {
   benchBySegment: string[][]
   fieldBySegment: string[][]
   /** segmentIndex → mid-segment swap info (only set for odd-segment-per-period mid swaps) */
-  midSwapBySegment: Map<number, { atMinute: number; preGkId: string | null; preBenchIds: string[] }>
+  midSwapBySegment: Map<number, { atMinute: number; preGkId: string | null; preFieldIds: string[]; preBenchIds: string[] }>
   warnings: SchedulerWarning[]
 }
 
@@ -30,7 +36,16 @@ interface PlayerStats {
 }
 
 export function solveRotation(input: RotationSolverInput): RotationSolverResult {
-  const { sportConfig, players, segments, pins, changeKeeperMidPeriod = false } = input
+  const {
+    sportConfig,
+    players,
+    segments,
+    pins,
+    changeKeeperMidPeriod = false,
+    maxBenchSegments = 1,
+    minSubsPerSegment = 0,
+    maxSubsPerSegment = Number.POSITIVE_INFINITY,
+  } = input
   const warnings: SchedulerWarning[] = []
 
   const gkBySegment: (string | null)[] = []
@@ -63,6 +78,8 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     })
   }
 
+  const consecBenchCount = new Map<string, number>()
+
   const segmentsByMatch = new Map<number, Segment[]>()
   for (const seg of segments) {
     const arr = segmentsByMatch.get(seg.matchIndex) ?? []
@@ -77,15 +94,15 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     matchSegments.sort((a, b) => a.segmentIndex - b.segmentIndex)
     if (matchIndex !== lastKeeperMatchIndex) lastKeeperId = null
 
-    // Reset per-match recent-bench history (A3/A9 do not bridge matches)
+    // Reset per-match recent-bench history (cap/A3 do not bridge matches).
     for (const s of stats.values()) {
       s.lastBenchedSeg = -Infinity
     }
+    consecBenchCount.clear()
 
     const firstSegIndex = matchSegments[0]!.segmentIndex
     const lastSegIndex = matchSegments[matchSegments.length - 1]!.segmentIndex
 
-    // Find first-segment-index per period so we can detect mid-period boundaries.
     const segsPerPeriod = new Map<number, Segment[]>()
     for (const s of matchSegments) {
       const arr = segsPerPeriod.get(s.periodIndex) ?? []
@@ -94,7 +111,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     }
 
     let prevBench = new Set<string>()
-    let prevPrevBench = new Set<string>()
     let prevPeriodIndex = -1
     let prevGkId: string | null = null
 
@@ -104,17 +120,12 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const newPeriod = seg.periodIndex !== prevPeriodIndex
       const pin = pins[seg.segmentIndex] ?? {}
 
-      // Mid-period swap detection: segment whose index within period is the midpoint.
       const periodSegs = segsPerPeriod.get(seg.periodIndex) ?? []
       const idxInPeriod = periodSegs.findIndex((s) => s.segmentIndex === seg.segmentIndex)
       const isOddPeriod = periodSegs.length % 2 === 1
-      // Even: swap cleanly at start of segs[len/2]. Odd: swap mid-segment at segs[floor(len/2)].
       const midIdx = Math.floor(periodSegs.length / 2)
       const isMidPeriodSwap =
-        changeKeeperMidPeriod &&
-        periodSegs.length >= 2 &&
-        idxInPeriod === midIdx &&
-        !newPeriod
+        changeKeeperMidPeriod && periodSegs.length >= 2 && idxInPeriod === midIdx && !newPeriod
       const isMidSegmentSwap = isMidPeriodSwap && isOddPeriod
 
       const absentSet = new Set([...(pin.absentIds ?? []), ...(pin.absentCreditedIds ?? [])])
@@ -123,7 +134,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const activeIds = new Set(active.map((p) => p.id))
       const segBenchSpots = Math.max(0, active.length - sportConfig.totalOnField)
 
-      // 1) Pick GK + bench.
       let gkId: string | null = null
       let bench: string[]
       let preBenchForMidSwap: string[] | null = null
@@ -135,32 +145,26 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         return a.id < b.id ? -1 : 1
       }
 
-      const noPinOverride =
-        pin.gkId === undefined && !pin.benchIds && !pin.fieldIds
+      const noPinOverride = pin.gkId === undefined && !pin.benchIds && !pin.fieldIds
 
-      if (
-        isMidSegmentSwap &&
-        prevGkId &&
-        activeIds.has(prevGkId) &&
-        noPinOverride
-      ) {
-        // ODD-segment mid-swap path: pick bench FIRST (normal rotation, forcing old
-        // keeper to field), then pick incoming keeper FROM that bench. New keeper
-        // was on FIELD last segment, subs ONTO bench at start of this segment, and
-        // becomes keeper at the mid-segment swap.
-        preBenchForMidSwap = pickBench({
-          players: active,
-          benchSpotsPerSeg: segBenchSpots,
-          prevBench,
-          prevPrevBench,
-          stats,
-          isMatchStart,
-          isMatchEnd,
-          isKeeperEligible,
-          isL1,
-          forcedFieldIds: new Set([prevGkId]),
-          warnings,
-        })
+      const benchArgs = {
+        active,
+        benchSpots: segBenchSpots,
+        prevBench,
+        consecBenchCount,
+        maxBenchSegments,
+        minSubsPerSegment,
+        maxSubsPerSegment,
+        stats,
+        isMatchStart,
+        isMatchEnd,
+        isKeeperEligible,
+        isL1,
+        warnings,
+      }
+
+      if (isMidSegmentSwap && prevGkId && activeIds.has(prevGkId) && noPinOverride) {
+        preBenchForMidSwap = pickBench({ ...benchArgs, forcedFieldIds: new Set([prevGkId]) })
         const benchKeeperCandidates = preBenchForMidSwap
           .map((id) => playerById.get(id))
           .filter((p): p is Player => !!p && isKeeperEligible(p))
@@ -168,11 +172,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         if (benchKeeperCandidates.length > 0) {
           gkId = benchKeeperCandidates[0]!.id
           midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
-          // Post-swap bench: pre-bench minus incoming keeper, plus old keeper.
           bench = preBenchForMidSwap.filter((id) => id !== gkId)
           bench.push(prevGkId)
         } else {
-          // No keeper-eligible on bench: fall back to continuity.
           gkId = prevGkId
           bench = preBenchForMidSwap
         }
@@ -193,7 +195,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             })
           }
         } else if (isMidPeriodSwap && !isOddPeriod && prevGkId && activeIds.has(prevGkId)) {
-          // Even-segment mid-period swap: incoming keeper comes from prev bench (clean boundary).
           const benchCandidates = [...prevBench]
             .map((id) => playerById.get(id))
             .filter((p): p is Player => !!p && activeIds.has(p.id) && isKeeperEligible(p) && p.id !== prevGkId)
@@ -216,13 +217,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           }
         }
 
-        // 2) Pick bench (for non-odd-mid-swap paths).
         if (pin.benchIds) {
           bench = [...pin.benchIds].filter((id) => activeIds.has(id))
         } else if (midPeriodSwapApplied) {
-          // Even-case bench-swap: incoming leaves prev bench, outgoing takes that seat.
-          bench = [...prevBench]
-            .filter((id) => id !== midPeriodSwapApplied!.incoming && activeIds.has(id))
+          bench = [...prevBench].filter((id) => id !== midPeriodSwapApplied!.incoming && activeIds.has(id))
           bench.push(midPeriodSwapApplied.outgoing)
         } else if (pin.fieldIds) {
           const fieldSet = new Set(pin.fieldIds.filter((id) => activeIds.has(id)))
@@ -231,24 +229,11 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             .map((p) => p.id)
             .slice(0, segBenchSpots)
         } else {
-          bench = pickBench({
-            players: active,
-            benchSpotsPerSeg: segBenchSpots,
-            prevBench,
-            prevPrevBench,
-            stats,
-            isMatchStart,
-            isMatchEnd,
-            isKeeperEligible,
-            isL1,
-            forcedFieldIds: gkId ? new Set([gkId]) : new Set(),
-            warnings,
-          })
+          bench = pickBench({ ...benchArgs, forcedFieldIds: gkId ? new Set([gkId]) : new Set() })
         }
       }
 
       const benchSet = new Set(bench)
-      // Resolve gk/bench conflict: if pin put gk on bench, drop them from bench.
       if (gkId && benchSet.has(gkId)) {
         benchSet.delete(gkId)
         bench = bench.filter((id) => id !== gkId)
@@ -258,18 +243,11 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         })
       }
 
-      // 3) Field = active − gk − bench.
-      const field = active
-        .filter((p) => p.id !== gkId && !benchSet.has(p.id))
-        .map((p) => p.id)
+      const field = active.filter((p) => p.id !== gkId && !benchSet.has(p.id)).map((p) => p.id)
 
-      // Record mid-segment swap (odd-segment-per-period case).
       if (isMidSegmentSwap && midPeriodSwapApplied && preBenchForMidSwap) {
         const periodStartMin = seg.periodIndex * sportConfig.periodDurationMinutes
         const midMin = periodStartMin + sportConfig.periodDurationMinutes / 2
-        // Pre-state (first half of segment): outgoing keeper still GK; incoming
-        // keeper benched as preparation; bench = pre-bench (chosen by normal
-        // rotation, includes incoming); field = active − oldGk − pre-bench.
         const preFieldIds = active
           .filter((p) => p.id !== midPeriodSwapApplied!.outgoing && !preBenchForMidSwap!.includes(p.id))
           .map((p) => p.id)
@@ -285,7 +263,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       benchBySegment[seg.segmentIndex] = bench
       fieldBySegment[seg.segmentIndex] = field
 
-      // 4) Update stats.
       for (const id of bench) {
         const s = stats.get(id)
         if (!s) continue
@@ -305,13 +282,22 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         const s = stats.get(id)
         if (s) s.pitchCount++
       }
-      // Credited absent: pitchCount++ so fairness treats them as if they played.
       for (const id of creditedSet) {
         const s = stats.get(id)
         if (s) s.pitchCount++
       }
 
-      prevPrevBench = prevBench
+      // Update consecutive-bench counter.
+      for (const p of players) {
+        if (benchSet.has(p.id)) {
+          consecBenchCount.set(p.id, (consecBenchCount.get(p.id) ?? 0) + (prevBench.has(p.id) ? 1 : 1))
+          // Note: if was bench last seg (in prevBench) AND now → count = prev+1; first time → 1.
+          if (!prevBench.has(p.id)) consecBenchCount.set(p.id, 1)
+        } else {
+          consecBenchCount.set(p.id, 0)
+        }
+      }
+
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
@@ -346,10 +332,13 @@ function pickKeeper(
 }
 
 interface PickBenchArgs {
-  players: Player[]
-  benchSpotsPerSeg: number
+  active: Player[]
+  benchSpots: number
   prevBench: Set<string>
-  prevPrevBench: Set<string>
+  consecBenchCount: Map<string, number>
+  maxBenchSegments: number
+  minSubsPerSegment: number
+  maxSubsPerSegment: number
   stats: Map<string, PlayerStats>
   isMatchStart: boolean
   isMatchEnd: boolean
@@ -361,10 +350,13 @@ interface PickBenchArgs {
 
 function pickBench(args: PickBenchArgs): string[] {
   const {
-    players,
-    benchSpotsPerSeg,
+    active,
+    benchSpots,
     prevBench,
-    prevPrevBench,
+    consecBenchCount,
+    maxBenchSegments,
+    minSubsPerSegment,
+    maxSubsPerSegment,
     stats,
     isMatchStart,
     isMatchEnd,
@@ -374,59 +366,148 @@ function pickBench(args: PickBenchArgs): string[] {
     warnings,
   } = args
 
-  if (benchSpotsPerSeg <= 0) return []
+  if (benchSpots <= 0) return []
 
-  const hardExcluded = new Set<string>([...prevBench, ...prevPrevBench, ...forcedFieldIds])
-  let candidates = players.filter((p) => !hardExcluded.has(p.id))
-
-  if (candidates.length < benchSpotsPerSeg) {
-    candidates = players.filter((p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id))
-    warnings.push({
-      kind: 'bench-rotation-impossible',
-      message: 'Could not honour 2-segment field minimum after returning from bench — schedule too tight.',
-    })
-  }
-  if (candidates.length < benchSpotsPerSeg) {
-    candidates = players.filter((p) => !forcedFieldIds.has(p.id))
-    warnings.push({
-      kind: 'bench-rotation-impossible',
-      message: 'Could not avoid back-to-back bench — schedule too tight.',
-    })
+  // First segment of match (no prev bench): fairness-only pick.
+  if (prevBench.size === 0) {
+    return fairnessPick(active, benchSpots, forcedFieldIds, stats, isL1, isKeeperEligible, isMatchStart, isMatchEnd, warnings)
   }
 
+  const activeIds = new Set(active.map((p) => p.id))
+
+  // Capped: prev bench players whose consecutive-bench would exceed maxBenchSegments if benched again.
+  const cappedOffBench = [...prevBench].filter((id) => {
+    if (forcedFieldIds.has(id)) return false
+    if (!activeIds.has(id)) return false
+    return (consecBenchCount.get(id) ?? 0) >= maxBenchSegments
+  })
+
+  const maxSubsEff = Math.min(maxSubsPerSegment, benchSpots)
+  const minSubsEff = Math.max(0, Math.min(minSubsPerSegment, maxSubsEff))
+  let targetSubs = Math.max(minSubsEff, cappedOffBench.length)
+  if (cappedOffBench.length > maxSubsEff) {
+    warnings.push({
+      kind: 'bench-rotation-impossible',
+      message: 'Max subs per segment too low to honour bench cap.',
+    })
+    targetSubs = cappedOffBench.length
+  }
+  targetSubs = Math.min(targetSubs, benchSpots)
+
+  // Players coming OFF bench: capped first, then more by least-pitch (need pitch).
+  const subOn: string[] = [...cappedOffBench]
+  const benchRemaining = [...prevBench]
+    .filter((id) => !subOn.includes(id) && !forcedFieldIds.has(id) && activeIds.has(id))
+    .sort((a, b) => (stats.get(a)?.pitchCount ?? 0) - (stats.get(b)?.pitchCount ?? 0))
+  while (subOn.length < targetSubs && benchRemaining.length > 0) {
+    subOn.push(benchRemaining.shift()!)
+  }
+
+  const stayedBench = [...prevBench].filter((id) => !subOn.includes(id) && activeIds.has(id))
+
+  // Players coming OFF field to bench. From prev field (= active not in prevBench), excluding forced-field.
+  const fieldCandidates = active.filter(
+    (p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id),
+  )
+  fieldCandidates.sort((a, b) => compareForBench(a, b, stats, isMatchStart, isMatchEnd))
+
+  const totalKeeperEligible = active.filter(isKeeperEligible).length
+  let keOnNewBench = stayedBench.filter((id) => {
+    const p = active.find((pp) => pp.id === id)
+    return p && isKeeperEligible(p)
+  }).length
+  let l1OnNewBench = stayedBench.filter((id) => {
+    const p = active.find((pp) => pp.id === id)
+    return p && isL1(p)
+  }).length
+
+  const newBenchAddition: string[] = []
+  for (const p of fieldCandidates) {
+    if (newBenchAddition.length >= subOn.length) break
+    if (isL1(p) && l1OnNewBench >= 1) continue
+    if (isKeeperEligible(p) && totalKeeperEligible - keOnNewBench - 1 < 1) continue
+    newBenchAddition.push(p.id)
+    if (isL1(p)) l1OnNewBench++
+    if (isKeeperEligible(p)) keOnNewBench++
+  }
+
+  // Relax keeper-eligible cap if short.
+  if (newBenchAddition.length < subOn.length) {
+    for (const p of fieldCandidates) {
+      if (newBenchAddition.length >= subOn.length) break
+      if (newBenchAddition.includes(p.id)) continue
+      if (isL1(p) && l1OnNewBench >= 1) continue
+      newBenchAddition.push(p.id)
+      if (isL1(p)) l1OnNewBench++
+    }
+    if (newBenchAddition.length < subOn.length) {
+      warnings.push({
+        kind: 'keeper-unavailable',
+        message: 'Bench picks would leave no keeper-eligible on field.',
+      })
+    }
+  }
+  // Relax L1 cap if still short.
+  if (newBenchAddition.length < subOn.length) {
+    for (const p of fieldCandidates) {
+      if (newBenchAddition.length >= subOn.length) break
+      if (newBenchAddition.includes(p.id)) continue
+      newBenchAddition.push(p.id)
+    }
+    warnings.push({
+      kind: 'l1-cap-infeasible',
+      message: 'Forced to bench more than one top-level player at once.',
+    })
+  }
+
+  return [...stayedBench, ...newBenchAddition]
+}
+
+function fairnessPick(
+  active: Player[],
+  benchSpots: number,
+  forcedFieldIds: Set<string>,
+  stats: Map<string, PlayerStats>,
+  isL1: (p: Player) => boolean,
+  isKeeperEligible: (p: Player) => boolean,
+  isMatchStart: boolean,
+  isMatchEnd: boolean,
+  warnings: SchedulerWarning[],
+): string[] {
+  const candidates = active.filter((p) => !forcedFieldIds.has(p.id))
   const sorted = [...candidates].sort((a, b) => compareForBench(a, b, stats, isMatchStart, isMatchEnd))
 
-  const picked: string[] = []
+  const totalKE = active.filter(isKeeperEligible).length
+  let keOnBench = 0
   let l1Picked = 0
-  let keeperEligibleAvailable = players.filter(isKeeperEligible).length
+  const picked: string[] = []
 
   for (const p of sorted) {
-    if (picked.length >= benchSpotsPerSeg) break
+    if (picked.length >= benchSpots) break
     if (isL1(p) && l1Picked >= 1) continue
-    if (isKeeperEligible(p) && keeperEligibleAvailable - 1 < 1) continue
+    if (isKeeperEligible(p) && totalKE - keOnBench - 1 < 1) continue
     picked.push(p.id)
     if (isL1(p)) l1Picked++
-    if (isKeeperEligible(p)) keeperEligibleAvailable--
+    if (isKeeperEligible(p)) keOnBench++
   }
-
-  if (picked.length < benchSpotsPerSeg) {
+  if (picked.length < benchSpots) {
     for (const p of sorted) {
-      if (picked.length >= benchSpotsPerSeg) break
+      if (picked.length >= benchSpots) break
       if (picked.includes(p.id)) continue
       if (isL1(p) && l1Picked >= 1) continue
       picked.push(p.id)
       if (isL1(p)) l1Picked++
     }
-    if (picked.length < benchSpotsPerSeg) {
+    if (picked.length < benchSpots) {
       warnings.push({
         kind: 'keeper-unavailable',
-        message: 'Bench picks would leave no keeper-eligible player on field.',
+        message: 'Bench picks would leave no keeper-eligible on field.',
       })
     }
   }
-  if (picked.length < benchSpotsPerSeg) {
+  if (picked.length < benchSpots) {
     for (const p of sorted) {
-      if (picked.length >= benchSpotsPerSeg) break
+      if (picked.length >= benchSpots) break
       if (picked.includes(p.id)) continue
       picked.push(p.id)
     }
@@ -435,7 +516,6 @@ function pickBench(args: PickBenchArgs): string[] {
       message: 'Forced to bench more than one top-level player at once.',
     })
   }
-
   return picked
 }
 

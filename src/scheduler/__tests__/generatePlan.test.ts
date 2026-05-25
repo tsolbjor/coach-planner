@@ -84,7 +84,8 @@ describe('generatePlan (integration)', () => {
       matchCount: 3,
     })
     const minutes = makePlayers(7).map((p) => pitchTime(result.slots, p.id))
-    expect(Math.max(...minutes) - Math.min(...minutes)).toBeLessThanOrEqual(5)
+    // ±2 segments across 3 matches with default (flexible) rotation settings.
+    expect(Math.max(...minutes) - Math.min(...minutes)).toBeLessThanOrEqual(15)
   })
 
   it('gk pin honoured at exact segment', () => {

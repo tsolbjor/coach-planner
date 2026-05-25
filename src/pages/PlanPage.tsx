@@ -31,6 +31,9 @@ function buildGenerationSignature(plan: MatchPlan) {
     totalOnField: plan.sportConfig.totalOnField,
     lineup: plan.sportConfig.lineupSlots.map((s) => `${s.positionTypeId}:${s.label}`),
     changeKeeperMidPeriod: plan.changeKeeperMidPeriod,
+    maxBenchSegments: plan.maxBenchSegments,
+    minSubsPerSegment: plan.minSubsPerSegment,
+    maxSubsPerSegment: plan.maxSubsPerSegment,
   })
 }
 
@@ -80,6 +83,9 @@ export function PlanPage() {
       matchCount: item.plan.matchCount,
       pins: item.plan.pins,
       changeKeeperMidPeriod: item.plan.changeKeeperMidPeriod,
+      maxBenchSegments: item.plan.maxBenchSegments,
+      minSubsPerSegment: item.plan.minSubsPerSegment,
+      maxSubsPerSegment: item.plan.maxSubsPerSegment,
     })
     setWarnings(result.warnings.map((w) => w.message))
     updateMatch(id, { slots: result.slots })

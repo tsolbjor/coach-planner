@@ -29,6 +29,9 @@ interface CreateConfig {
   benchStintMinutes: number
   matchCount: number
   changeKeeperMidPeriod: boolean
+  maxBenchSegments: number
+  minSubsPerSegment: number
+  maxSubsPerSegment: number
 }
 
 function CreatePlanModal({
@@ -51,11 +54,14 @@ function CreatePlanModal({
   const [benchStintMinutes, setBenchStintMinutes] = useState(5)
   const [matchCount, setMatchCount] = useState(1)
   const [changeKeeperMidPeriod, setChangeKeeperMidPeriod] = useState(false)
+  const [maxBenchSegments, setMaxBenchSegments] = useState(1)
+  const [minSubsPerSegment, setMinSubsPerSegment] = useState(0)
   const [planName, setPlanName] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [labelOverrides, setLabelOverrides] = useState<Record<number, string>>({})
 
   const benchSize = Math.max(0, totalPlayers - size.size)
+  const [maxSubsPerSegment, setMaxSubsPerSegment] = useState(Math.max(1, benchSize))
 
   const pickSport = (next: SportPreset) => {
     const nextSize = next.sizes[0]!
@@ -102,6 +108,9 @@ function CreatePlanModal({
       benchStintMinutes: Math.min(benchStintMinutes, periodDuration),
       matchCount,
       changeKeeperMidPeriod,
+      maxBenchSegments,
+      minSubsPerSegment: Math.min(minSubsPerSegment, maxSubsPerSegment),
+      maxSubsPerSegment: Math.min(maxSubsPerSegment, Math.max(1, benchSize)),
     })
   }
 
@@ -172,6 +181,27 @@ function CreatePlanModal({
             onChange={setBenchStintMinutes}
           />
           <NumberStepper label="Matches" value={matchCount} min={1} max={10} onChange={setMatchCount} />
+          <NumberStepper
+            label="Max segments on bench"
+            value={maxBenchSegments}
+            min={1}
+            max={Math.max(1, periodCount * Math.max(1, Math.round(periodDuration / benchStintMinutes)))}
+            onChange={setMaxBenchSegments}
+          />
+          <NumberStepper
+            label="Min subs per segment"
+            value={minSubsPerSegment}
+            min={0}
+            max={Math.max(0, benchSize)}
+            onChange={setMinSubsPerSegment}
+          />
+          <NumberStepper
+            label="Max subs per segment"
+            value={maxSubsPerSegment}
+            min={Math.max(1, minSubsPerSegment)}
+            max={Math.max(1, benchSize)}
+            onChange={setMaxSubsPerSegment}
+          />
           <label className="flex items-start gap-3 cursor-pointer pt-1">
             <input
               type="checkbox"
@@ -304,6 +334,9 @@ export function HomePage() {
       absentPlayerIds: [],
       pins: {},
       changeKeeperMidPeriod: config.changeKeeperMidPeriod,
+      maxBenchSegments: config.maxBenchSegments,
+      minSubsPerSegment: config.minSubsPerSegment,
+      maxSubsPerSegment: config.maxSubsPerSegment,
     })
     setCreating(false)
     navigate(`/plan/${plan.id}`)

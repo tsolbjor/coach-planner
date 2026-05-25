@@ -14,6 +14,9 @@ function regenSlots(plan: MatchPlan): MatchPlan {
     matchCount: plan.matchCount,
     pins: plan.pins,
     changeKeeperMidPeriod: plan.changeKeeperMidPeriod,
+    maxBenchSegments: plan.maxBenchSegments,
+    minSubsPerSegment: plan.minSubsPerSegment,
+    maxSubsPerSegment: plan.maxSubsPerSegment,
   })
   return { ...plan, slots: result.slots }
 }
@@ -73,11 +76,15 @@ function normalizeMatchPlan(plan: MatchPlan): MatchPlan {
       Array.isArray((s as { absentIds?: unknown }).absentIds) &&
       Array.isArray((s as { absentCreditedIds?: unknown }).absentCreditedIds),
   )
+  const benchSize = Math.max(0, plan.roster.length - plan.sportConfig.totalOnField)
   return {
     ...plan,
     roster: plan.roster.map(normalizePlayer),
     pins: plan.pins ?? {},
     changeKeeperMidPeriod: plan.changeKeeperMidPeriod ?? false,
+    maxBenchSegments: plan.maxBenchSegments ?? 1,
+    minSubsPerSegment: plan.minSubsPerSegment ?? 0,
+    maxSubsPerSegment: plan.maxSubsPerSegment ?? Math.max(1, benchSize),
     slots: slotsOk ? plan.slots : [],
   }
 }

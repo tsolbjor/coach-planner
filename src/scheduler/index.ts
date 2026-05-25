@@ -14,6 +14,9 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
     matchCount = 1,
     pins = {},
     changeKeeperMidPeriod = false,
+    maxBenchSegments,
+    minSubsPerSegment,
+    maxSubsPerSegment,
   } = input
   const warnings: SchedulerWarning[] = []
 
@@ -26,7 +29,16 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
   )
 
   const segments = buildSegments(sportConfig, benchStintMinutes, matchCount)
-  const rot = solveRotation({ sportConfig, players, segments, pins, changeKeeperMidPeriod })
+  const rot = solveRotation({
+    sportConfig,
+    players,
+    segments,
+    pins,
+    changeKeeperMidPeriod,
+    maxBenchSegments,
+    minSubsPerSegment,
+    maxSubsPerSegment,
+  })
   warnings.push(...rot.warnings)
 
   const overlay = buildPositionOverlay({

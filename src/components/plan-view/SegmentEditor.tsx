@@ -45,16 +45,6 @@ function swap(slot: TimeSlot, a: string, b: string): SegmentPin {
   return { gkId: gk, fieldIds: field, benchIds: bench }
 }
 
-function setGk(slot: TimeSlot, newGkId: string): SegmentPin {
-  const oldGk = slot.gkId
-  let field = slot.fieldIds.filter((id) => id !== newGkId)
-  const bench = slot.benchIds.filter((id) => id !== newGkId)
-  if (oldGk && oldGk !== newGkId && !field.includes(oldGk) && !bench.includes(oldGk)) {
-    field = [...field, oldGk]
-  }
-  return { gkId: newGkId, fieldIds: field, benchIds: bench }
-}
-
 function applyAbsence(existing: SegmentPin | undefined, playerId: string, credit: boolean): SegmentPin {
   const base = existing ?? {}
   const absent = new Set(base.absentIds ?? [])
@@ -142,11 +132,6 @@ export function SegmentEditor({
     onClose()
   }
 
-  const handleMakeGk = () => {
-    onSetPins({ [segmentIndex]: setGk(slot, selectedPlayerId) })
-    onClose()
-  }
-
   const handleMarkAbsent = (scope: 'segment' | 'period' | 'match') => {
     const targets = scopeSegments(slots, segmentIndex, scope)
     const updates: Record<number, SegmentPin | null> = {}
@@ -218,12 +203,6 @@ export function SegmentEditor({
               <p className="text-xs text-slate-500">
                 Tap another player to swap roles. Plan re-balances from here on.
               </p>
-
-              {selectedRole !== 'gk' && (
-                <Button size="sm" fullWidth onClick={handleMakeGk}>
-                  Make {selected?.name} keeper at this segment
-                </Button>
-              )}
 
               <Section title="Keeper">
                 {gkPlayer ? (

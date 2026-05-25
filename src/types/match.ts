@@ -72,6 +72,12 @@ export interface MatchPlan {
   pins: Record<number, SegmentPin>
   /** When true, swap keeper with a benched player at the period midpoint */
   changeKeeperMidPeriod: boolean
+  /** Max consecutive segments a player can stay on bench (default 1 = no back-to-back). */
+  maxBenchSegments: number
+  /** Minimum substitutions enforced per segment boundary (default 0 = no floor). */
+  minSubsPerSegment: number
+  /** Maximum substitutions per segment boundary (default = bench size = no cap). */
+  maxSubsPerSegment: number
 }
 
 export interface TournamentPlan {
