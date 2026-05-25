@@ -16,7 +16,7 @@ interface TopFlowNavProps {
 
 const flowLabels: Record<FlowStep, string> = {
   home: 'Home',
-  planner: 'Rotation Setup',
+  planner: 'Setup',
   roster: 'Players',
   full: 'Full Timeline',
 }

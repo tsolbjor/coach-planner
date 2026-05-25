@@ -1,7 +1,22 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { nanoid } from 'nanoid'
-import { normalizePlayerLevel, type SavedItem, type MatchPlan, type TournamentPlan, type Player } from '../types'
+import { normalizePlayerLevel, type SavedItem, type MatchPlan, type SegmentPin, type TournamentPlan, type Player } from '../types'
+import { generatePlan } from '../scheduler'
+
+function regenSlots(plan: MatchPlan): MatchPlan {
+  const active = plan.roster.filter((p) => !plan.absentPlayerIds.includes(p.id))
+  if (active.length === 0) return { ...plan, slots: [] }
+  const result = generatePlan({
+    sportConfig: plan.sportConfig,
+    players: active,
+    benchStintMinutes: plan.benchStintMinutes,
+    matchCount: plan.matchCount,
+    pins: plan.pins,
+    changeKeeperMidPeriod: plan.changeKeeperMidPeriod,
+  })
+  return { ...plan, slots: result.slots }
+}
 
 interface SavedPlansState {
   items: SavedItem[]
@@ -20,6 +35,12 @@ interface SavedPlansState {
   addMatchPlayer: (planId: string, player: Omit<Player, 'id'>) => void
   updateMatchPlayer: (planId: string, playerId: string, updates: Partial<Omit<Player, 'id'>>) => void
   removeMatchPlayer: (planId: string, playerId: string) => void
+  /** Pin / unpin a segment override */
+  setSegmentPin: (planId: string, segmentIndex: number, pin: SegmentPin) => void
+  /** Batch set/clear pins. Value `null` removes that pin. */
+  setSegmentPins: (planId: string, updates: Record<number, SegmentPin | null>) => void
+  clearSegmentPin: (planId: string, segmentIndex: number) => void
+  clearAllPins: (planId: string) => void
 }
 
 function savedId(item: SavedItem): string {
@@ -45,9 +66,19 @@ function normalizePlayer(player: Player): Player {
 }
 
 function normalizeMatchPlan(plan: MatchPlan): MatchPlan {
+  const slotsOk = plan.slots.every(
+    (s) =>
+      'gkId' in s &&
+      Array.isArray((s as { fieldIds?: unknown }).fieldIds) &&
+      Array.isArray((s as { absentIds?: unknown }).absentIds) &&
+      Array.isArray((s as { absentCreditedIds?: unknown }).absentCreditedIds),
+  )
   return {
     ...plan,
     roster: plan.roster.map(normalizePlayer),
+    pins: plan.pins ?? {},
+    changeKeeperMidPeriod: plan.changeKeeperMidPeriod ?? false,
+    slots: slotsOk ? plan.slots : [],
   }
 }
 
@@ -153,6 +184,46 @@ export const useSavedPlansStore = create<SavedPlansState>()(
             roster: plan.roster.filter((p) => p.id !== playerId),
             updatedAt: new Date().toISOString(),
           })),
+        })),
+
+      setSegmentPin: (planId, segmentIndex, pin) =>
+        set((s) => ({
+          items: patchMatch(s.items, planId, (plan) =>
+            regenSlots({
+              ...plan,
+              pins: { ...plan.pins, [segmentIndex]: pin },
+              updatedAt: new Date().toISOString(),
+            }),
+          ),
+        })),
+
+      setSegmentPins: (planId, updates) =>
+        set((s) => ({
+          items: patchMatch(s.items, planId, (plan) => {
+            const next = { ...plan.pins }
+            for (const [k, v] of Object.entries(updates)) {
+              const idx = Number(k)
+              if (v === null) delete next[idx]
+              else next[idx] = v
+            }
+            return regenSlots({ ...plan, pins: next, updatedAt: new Date().toISOString() })
+          }),
+        })),
+
+      clearSegmentPin: (planId, segmentIndex) =>
+        set((s) => ({
+          items: patchMatch(s.items, planId, (plan) => {
+            const next = { ...plan.pins }
+            delete next[segmentIndex]
+            return regenSlots({ ...plan, pins: next, updatedAt: new Date().toISOString() })
+          }),
+        })),
+
+      clearAllPins: (planId) =>
+        set((s) => ({
+          items: patchMatch(s.items, planId, (plan) =>
+            regenSlots({ ...plan, pins: {}, updatedAt: new Date().toISOString() }),
+          ),
         })),
     }),
     {

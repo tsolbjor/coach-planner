@@ -1,14 +1,20 @@
 import { nanoid } from 'nanoid'
-import type { TimeSlot } from '../types'
+import type { SegmentPin, TimeSlot } from '../types'
 import type { SchedulerInput, SchedulerOutput, SchedulerWarning } from './types'
 import { buildSegments } from './segmentBuilder'
 import { checkFeasibility } from './feasibility'
-import { planKeepers } from './keeperPlan'
-import { scheduleBench, type LockedBench } from './benchSchedule'
-import { assignPositions } from './positionAssign'
+import { solveRotation } from './rotationSolver'
+import { buildPositionOverlay } from './positionOverlay'
 
 export function generatePlan(input: SchedulerInput): SchedulerOutput {
-  const { sportConfig, players, benchStintMinutes, matchCount = 1, existingSlots = [] } = input
+  const {
+    sportConfig,
+    players,
+    benchStintMinutes,
+    matchCount = 1,
+    pins = {},
+    changeKeeperMidPeriod = false,
+  } = input
   const warnings: SchedulerWarning[] = []
 
   if (players.length === 0) {
@@ -16,89 +22,78 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
   }
 
   warnings.push(
-    ...checkFeasibility({
-      sportConfig,
-      players,
-      benchStintMinutes,
-      matchCount,
-      existingSlots,
-    }),
+    ...checkFeasibility({ sportConfig, players, benchStintMinutes, matchCount, pins }),
   )
 
   const segments = buildSegments(sportConfig, benchStintMinutes, matchCount)
-  const segmentByLocation = new Map<string, number>()
-  for (const seg of segments) {
-    segmentByLocation.set(`${seg.matchIndex}:${seg.periodIndex}:${seg.startMinute}`, seg.segmentIndex)
-  }
+  const rot = solveRotation({ sportConfig, players, segments, pins, changeKeeperMidPeriod })
+  warnings.push(...rot.warnings)
 
-  const keeperSlotId =
-    sportConfig.lineupSlots.find((s) => {
-      const pt = sportConfig.positionTypes.find((p) => p.id === s.positionTypeId)
-      return pt?.isKeeper
-    })?.slotId ?? null
-
-  const lockedBench = new Map<number, LockedBench>()
-  const lockedKeeper = new Map<number, string | null>()
-  const lockedAssignments = new Map<number, Record<string, string | null>>()
-  const lockedSlotById = new Map<number, TimeSlot>()
-  for (const slot of existingSlots) {
-    if (!slot.locked) continue
-    const segIdx = segmentByLocation.get(`${slot.matchIndex}:${slot.periodIndex}:${slot.startMinute}`)
-    if (segIdx === undefined) continue
-    lockedBench.set(segIdx, {
-      bench: [...slot.bench],
-      field: new Set(Object.values(slot.assignments).filter((v): v is string => v !== null)),
-    })
-    lockedAssignments.set(segIdx, { ...slot.assignments })
-    if (keeperSlotId) lockedKeeper.set(segIdx, slot.assignments[keeperSlotId] ?? null)
-    lockedSlotById.set(segIdx, slot)
-  }
-
-  const keeperResult = planKeepers({ sportConfig, players, segments, lockedKeeper })
-  warnings.push(...keeperResult.warnings)
-
-  const forcedField = new Map<number, Set<string>>()
-  for (const seg of segments) {
-    const id = keeperResult.keeperByPeriod.get(`${seg.matchIndex}:${seg.periodIndex}`)
-    if (id) forcedField.set(seg.segmentIndex, new Set([id]))
-  }
-
-  const benchResult = scheduleBench({
+  const overlay = buildPositionOverlay({
     sportConfig,
     players,
     segments,
-    locks: lockedBench,
-    forcedField,
+    gkBySegment: rot.gkBySegment,
+    fieldBySegment: rot.fieldBySegment,
   })
-  warnings.push(...benchResult.warnings)
+  warnings.push(...overlay.warnings)
 
-  const positionResult = assignPositions({
-    sportConfig,
-    players,
-    segments,
-    benchBySegment: benchResult.benchBySegment,
-    keeperByPeriod: keeperResult.keeperByPeriod,
-    lockedAssignments,
-  })
-  warnings.push(...positionResult.warnings)
-
-  const resultSlots: TimeSlot[] = segments.map((seg) => {
-    const locked = lockedSlotById.get(seg.segmentIndex)
-    if (locked) return locked
+  const slots: TimeSlot[] = segments.map((seg) => {
+    const swap = rot.midSwapBySegment.get(seg.segmentIndex)
+    const positions = overlay.positionsBySegment.get(seg.segmentIndex) ?? {}
+    let midSwap: TimeSlot['midSwap']
+    if (swap) {
+      const keeperSlotId = sportConfig.lineupSlots.find((s) => {
+        const pt = sportConfig.positionTypes.find((p) => p.id === s.positionTypeId)
+        return pt?.isKeeper
+      })?.slotId
+      // Pre-positions: same as post but swap keeper + the player who took keeper's vacated field slot.
+      const prePositions: Record<string, string | null> = { ...positions }
+      if (keeperSlotId) prePositions[keeperSlotId] = swap.preGkId
+      // The incoming keeper held a field slot pre-swap; the outgoing keeper now holds it post-swap.
+      // Find that slot and flip back to incoming for prePositions.
+      const incomingKeeperId = rot.gkBySegment[seg.segmentIndex] ?? null
+      const outgoingKeeperId = swap.preGkId
+      if (incomingKeeperId && outgoingKeeperId) {
+        for (const [slotId, pid] of Object.entries(positions)) {
+          if (slotId === keeperSlotId) continue
+          if (pid === outgoingKeeperId) {
+            prePositions[slotId] = incomingKeeperId
+            break
+          }
+        }
+      }
+      midSwap = {
+        atMinute: swap.atMinute,
+        preGkId: swap.preGkId,
+        preFieldIds: swap.preFieldIds,
+        preBenchIds: swap.preBenchIds,
+        prePositions,
+      }
+    }
     return {
       id: nanoid(8),
       matchIndex: seg.matchIndex,
       periodIndex: seg.periodIndex,
       startMinute: seg.startMinute,
       endMinute: seg.endMinute,
-      assignments: positionResult.assignmentsBySegment.get(seg.segmentIndex) ?? {},
-      bench: benchResult.benchBySegment[seg.segmentIndex] ?? [],
-      locked: false,
+      gkId: rot.gkBySegment[seg.segmentIndex] ?? null,
+      fieldIds: rot.fieldBySegment[seg.segmentIndex] ?? [],
+      benchIds: rot.benchBySegment[seg.segmentIndex] ?? [],
+      absentIds: [
+        ...(pins[seg.segmentIndex]?.absentIds ?? []),
+        ...(pins[seg.segmentIndex]?.absentCreditedIds ?? []),
+      ],
+      absentCreditedIds: pins[seg.segmentIndex]?.absentCreditedIds ?? [],
+      positions,
+      midSwap,
     }
   })
 
-  return { slots: resultSlots, warnings: dedupeWarnings(warnings) }
+  return { slots, warnings: dedupeWarnings(warnings) }
 }
+
+export type { SegmentPin }
 
 function dedupeWarnings(warnings: SchedulerWarning[]): SchedulerWarning[] {
   const seen = new Set<string>()

@@ -1,11 +1,14 @@
-import type { SportConfig, TimeSlot, Player } from '../types'
+import type { SegmentPin, SportConfig, TimeSlot, Player } from '../types'
 
 export interface SchedulerInput {
   sportConfig: SportConfig
   players: Player[]
   benchStintMinutes: number
   matchCount?: number
-  existingSlots?: TimeSlot[]
+  /** segmentIndex → user override */
+  pins?: Record<number, SegmentPin>
+  /** Swap keeper with a benched player at the period midpoint */
+  changeKeeperMidPeriod?: boolean
 }
 
 export interface SchedulerOutput {
@@ -32,4 +35,3 @@ export interface Segment {
   startMinute: number
   endMinute: number
 }
-

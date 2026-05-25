@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react'
+
 interface NumberStepperProps {
   value: number
   min?: number
@@ -37,6 +39,28 @@ export function NumberStepper({
     return Number(clamped.toFixed(precision))
   }
 
+  const [draft, setDraft] = useState(() => formatValue(value, precision))
+  const [focused, setFocused] = useState(false)
+  useEffect(() => {
+    if (!focused) setDraft(formatValue(value, precision))
+  }, [value, precision, focused])
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim()
+    if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+      setDraft(formatValue(value, precision))
+      return
+    }
+    const parsed = Number(trimmed)
+    if (!Number.isFinite(parsed)) {
+      setDraft(formatValue(value, precision))
+      return
+    }
+    const clamped = clamp(parsed)
+    setDraft(formatValue(clamped, precision))
+    if (clamped !== value) onChange(clamped)
+  }
+
   return (
     <div className="flex items-center gap-3">
       {label && <span className="text-sm text-slate-600 flex-1">{label}</span>}
@@ -52,9 +76,37 @@ export function NumberStepper({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
           </svg>
         </button>
-        <span className="px-3 py-2 min-w-[2.5rem] text-center font-semibold tabular-nums">
-          {formatValue(value, precision)}{suffix ? <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span> : null}
-        </span>
+        <label className="flex items-center px-2 py-2 min-w-[3rem]">
+          <input
+            type="number"
+            inputMode="decimal"
+            value={draft}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(e) => setDraft(e.target.value)}
+            onFocus={(e) => {
+              setFocused(true)
+              e.target.select()
+            }}
+            onBlur={(e) => {
+              setFocused(false)
+              commit(e.target.value)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                commit((e.target as HTMLInputElement).value)
+                ;(e.target as HTMLInputElement).blur()
+              }
+              if (e.key === 'Escape') {
+                setDraft(formatValue(value, precision))
+                ;(e.target as HTMLInputElement).blur()
+              }
+            }}
+            className="w-full bg-transparent text-center font-semibold tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+          />
+          {suffix && <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span>}
+        </label>
         <button
           type="button"
           onClick={() => onChange(clamp(value + step))}

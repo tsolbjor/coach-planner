@@ -1,4 +1,4 @@
-import { normalizePlayerLevel, type Player, type SportConfig, type TimeSlot } from '../types'
+import { normalizePlayerLevel, type Player, type SegmentPin, type SportConfig } from '../types'
 import type { SchedulerWarning } from './types'
 
 export interface FeasibilityInput {
@@ -6,11 +6,11 @@ export interface FeasibilityInput {
   players: Player[]
   benchStintMinutes: number
   matchCount: number
-  existingSlots: TimeSlot[]
+  pins: Record<number, SegmentPin>
 }
 
 export function checkFeasibility(input: FeasibilityInput): SchedulerWarning[] {
-  const { sportConfig, players, benchStintMinutes, matchCount, existingSlots } = input
+  const { sportConfig, players, benchStintMinutes, matchCount, pins } = input
   const warnings: SchedulerWarning[] = []
 
   if (players.length === 0) {
@@ -64,32 +64,41 @@ export function checkFeasibility(input: FeasibilityInput): SchedulerWarning[] {
     })
   }
 
-  for (const lock of existingSlots) {
-    if (!lock.locked) continue
-    const seen = new Set<string>()
-    for (const [slotId, playerId] of Object.entries(lock.assignments)) {
-      if (!playerId) continue
-      if (seen.has(playerId)) {
+  const playerIds = new Set(players.map((p) => p.id))
+  for (const [segIdxStr, pin] of Object.entries(pins)) {
+    const segIdx = Number(segIdxStr)
+    if (pin.gkId && !playerIds.has(pin.gkId)) {
+      warnings.push({
+        kind: 'lock-conflict',
+        message: `Pin at segment ${segIdx} references missing keeper player.`,
+      })
+    }
+    if (pin.gkId && keeperPositionTypeId) {
+      const p = players.find((pl) => pl.id === pin.gkId)
+      if (p && (p.excludedPositionTypeIds ?? []).includes(keeperPositionTypeId)) {
         warnings.push({
           kind: 'lock-conflict',
-          message: `Locked slot at match ${lock.matchIndex + 1} period ${lock.periodIndex + 1} assigns the same player to two positions.`,
+          message: `Pin at segment ${segIdx} assigns ${p.name} as keeper but they are excluded from that role.`,
         })
       }
-      seen.add(playerId)
-      const player = players.find((p) => p.id === playerId)
-      if (!player) continue
-      const lineupSlot = sportConfig.lineupSlots.find((s) => s.slotId === slotId)
-      if (!lineupSlot) continue
-      if ((player.excludedPositionTypeIds ?? []).includes(lineupSlot.positionTypeId)) {
+    }
+    if (pin.fieldIds && pin.benchIds) {
+      const overlap = pin.fieldIds.filter((id) => pin.benchIds!.includes(id))
+      if (overlap.length > 0) {
         warnings.push({
           kind: 'lock-conflict',
-          message: `Locked slot at match ${lock.matchIndex + 1} period ${lock.periodIndex + 1} assigns ${player.name} to a position they are excluded from (${lineupSlot.label}).`,
+          message: `Pin at segment ${segIdx} places the same player on field and bench.`,
         })
       }
-      if (lock.bench.includes(playerId)) {
+    }
+    const absentCount =
+      (pin.absentIds?.length ?? 0) + (pin.absentCreditedIds?.length ?? 0)
+    if (absentCount > 0) {
+      const active = players.length - absentCount
+      if (active < sportConfig.totalOnField) {
         warnings.push({
-          kind: 'lock-conflict',
-          message: `Locked slot at match ${lock.matchIndex + 1} period ${lock.periodIndex + 1} has ${player.name} on field and bench simultaneously.`,
+          kind: 'low-player-count',
+          message: `Segment ${segIdx}: ${absentCount} absent leaves only ${active} player${active === 1 ? '' : 's'} for ${sportConfig.totalOnField} field slot${sportConfig.totalOnField === 1 ? '' : 's'}.`,
         })
       }
     }

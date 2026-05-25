@@ -1,19 +1,19 @@
 import { describe, it, expect } from 'vitest'
 import { generatePlan } from '..'
 import { makeFiveASide, makePlayers } from './fixtures'
-import type { Player } from '../../types'
+import type { Player, TimeSlot } from '../../types'
 
-function pitchTime(slots: ReturnType<typeof generatePlan>['slots'], playerId: string): number {
+function pitchTime(slots: TimeSlot[], playerId: string): number {
   let total = 0
   for (const slot of slots) {
-    const onField = Object.values(slot.assignments).includes(playerId)
+    const onField = slot.gkId === playerId || slot.fieldIds.includes(playerId)
     if (onField) total += slot.endMinute - slot.startMinute
   }
   return total
 }
 
-function benchCount(slots: ReturnType<typeof generatePlan>['slots'], playerId: string): number {
-  return slots.filter((s) => s.bench.includes(playerId)).length
+function benchCount(slots: TimeSlot[], playerId: string): number {
+  return slots.filter((s) => s.benchIds.includes(playerId)).length
 }
 
 describe('generatePlan (integration)', () => {
@@ -26,12 +26,10 @@ describe('generatePlan (integration)', () => {
       matchCount: 1,
     })
     const minutes = makePlayers(7).map((p) => pitchTime(result.slots, p.id))
-    const max = Math.max(...minutes)
-    const min = Math.min(...minutes)
-    expect(max - min).toBeLessThanOrEqual(5)
+    expect(Math.max(...minutes) - Math.min(...minutes)).toBeLessThanOrEqual(5)
   })
 
-  it('6 players, 5 on field, 4 segments — every bench gap ≥ 3', () => {
+  it('6 players, 5 on field, 4 segments — no back-to-back bench', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const result = generatePlan({
       sportConfig: sport,
@@ -40,16 +38,13 @@ describe('generatePlan (integration)', () => {
       matchCount: 1,
     })
     expect(result.slots).toHaveLength(4)
-    // No back-to-back bench across the 4 segments.
     for (let i = 1; i < result.slots.length; i++) {
-      const prevBench = new Set(result.slots[i - 1]!.bench)
-      for (const id of result.slots[i]!.bench) {
-        expect(prevBench.has(id)).toBe(false)
-      }
+      const prev = new Set(result.slots[i - 1]!.benchIds)
+      for (const id of result.slots[i]!.benchIds) expect(prev.has(id)).toBe(false)
     }
   })
 
-  it('5 players (exactly fills field) → warning, no rotation', () => {
+  it('5 players exactly fills field — warning + no bench', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const result = generatePlan({
       sportConfig: sport,
@@ -59,12 +54,13 @@ describe('generatePlan (integration)', () => {
     })
     expect(result.warnings.map((w) => w.kind)).toContain('bench-rotation-impossible')
     for (const slot of result.slots) {
-      expect(slot.bench).toEqual([])
-      expect(Object.values(slot.assignments).filter(Boolean)).toHaveLength(5)
+      expect(slot.benchIds).toEqual([])
+      const fieldTotal = (slot.gkId ? 1 : 0) + slot.fieldIds.length
+      expect(fieldTotal).toBe(5)
     }
   })
 
-  it('A2 — no player in two slots at once', () => {
+  it('no player both on field and bench at same segment', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const result = generatePlan({
       sportConfig: sport,
@@ -73,15 +69,13 @@ describe('generatePlan (integration)', () => {
       matchCount: 1,
     })
     for (const slot of result.slots) {
-      const ids = Object.values(slot.assignments).filter(Boolean) as string[]
-      expect(new Set(ids).size).toBe(ids.length)
-      for (const id of ids) {
-        expect(slot.bench).not.toContain(id)
-      }
+      const onField = new Set([...(slot.gkId ? [slot.gkId] : []), ...slot.fieldIds])
+      for (const id of slot.benchIds) expect(onField.has(id)).toBe(false)
+      expect(new Set(slot.fieldIds).size).toBe(slot.fieldIds.length)
     }
   })
 
-  it('multi-match tournament: cross-match pitch time balanced', () => {
+  it('multi-match tournament — pitch time balanced', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const result = generatePlan({
       sportConfig: sport,
@@ -90,57 +84,52 @@ describe('generatePlan (integration)', () => {
       matchCount: 3,
     })
     const minutes = makePlayers(7).map((p) => pitchTime(result.slots, p.id))
-    const max = Math.max(...minutes)
-    const min = Math.min(...minutes)
-    expect(max - min).toBeLessThanOrEqual(5)
+    expect(Math.max(...minutes) - Math.min(...minutes)).toBeLessThanOrEqual(5)
   })
 
-  it('locked slot retained verbatim, rest still valid', () => {
+  it('gk pin honoured at exact segment', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players = makePlayers(7)
-    // First generate to grab a segment shape, then build a locked override for segment 0.
-    const firstRun = generatePlan({
-      sportConfig: sport,
-      players,
-      benchStintMinutes: 5,
-      matchCount: 1,
-    })
-    const lockedSlot = {
-      ...firstRun.slots[0]!,
-      id: 'fixed-lock',
-      assignments: { gk: 'p1', def_1: 'p2', def_2: 'p3', mid: 'p4', fwd: 'p5' },
-      bench: ['p6', 'p7'],
-      locked: true,
-    }
     const result = generatePlan({
       sportConfig: sport,
       players,
       benchStintMinutes: 5,
       matchCount: 1,
-      existingSlots: [lockedSlot],
+      pins: { 2: { gkId: 'p7' } },
     })
-    expect(result.slots[0]).toEqual(lockedSlot)
-    // Segments 1..3 still have full assignments
-    for (let i = 1; i < result.slots.length; i++) {
-      expect(Object.values(result.slots[i]!.assignments).filter(Boolean)).toHaveLength(5)
-    }
+    expect(result.slots[2]!.gkId).toBe('p7')
   })
 
-  it('player excluded from 3 of 4 outfield positions still gets equal field time', () => {
+  it('bench pin honoured at exact segment', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const players = makePlayers(7)
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+      pins: { 0: { benchIds: ['p6', 'p7'] } },
+    })
+    expect(result.slots[0]!.benchIds).toEqual(['p6', 'p7'])
+    const fieldSet = new Set([...(result.slots[0]!.gkId ? [result.slots[0]!.gkId] : []), ...result.slots[0]!.fieldIds])
+    expect(fieldSet.has('p6')).toBe(false)
+    expect(fieldSet.has('p7')).toBe(false)
+  })
+
+  it('player excluded from outfield positions still keeps pitch time via gk', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(7)
-    players[0]!.excludedPositionTypeIds = ['def', 'mid', 'fwd'] // p1 only keeper-eligible outfield-wise
+    players[0]!.excludedPositionTypeIds = ['def', 'mid', 'fwd']
     const result = generatePlan({
       sportConfig: sport,
       players,
       benchStintMinutes: 5,
       matchCount: 1,
     })
-    // p1 still on field every segment (as keeper)
     expect(pitchTime(result.slots, 'p1')).toBeGreaterThan(0)
   })
 
-  it('2 L1 players never benched together (A10)', () => {
+  it('A10: never bench two L1 players at once', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = [
       ...makePlayers(2, { level: 1 }),
@@ -155,44 +144,37 @@ describe('generatePlan (integration)', () => {
       matchCount: 1,
     })
     for (const slot of result.slots) {
-      const l1OnBench = slot.bench.filter((id) => l1Ids.has(id)).length
-      expect(l1OnBench).toBeLessThanOrEqual(1)
+      expect(slot.benchIds.filter((id) => l1Ids.has(id)).length).toBeLessThanOrEqual(1)
     }
   })
 
-  it('keeper-only-eligible: only 2 players → split keeper time, no back-to-back-period same keeper preferred', () => {
+  it('keeper rotation when only 2 eligible', () => {
     const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(7)
-    // Exclude all but p1 and p2 from gk
-    for (let i = 2; i < players.length; i++) {
-      players[i]!.excludedPositionTypeIds = ['gk']
-    }
+    for (let i = 2; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['gk']
     const result = generatePlan({
       sportConfig: sport,
       players,
       benchStintMinutes: 5,
       matchCount: 2,
     })
-    const keeperMinutes = new Map<string, number>()
+    const minutes = new Map<string, number>()
     for (const slot of result.slots) {
-      const id = slot.assignments['gk']
-      if (id) keeperMinutes.set(id, (keeperMinutes.get(id) ?? 0) + slot.endMinute - slot.startMinute)
+      if (slot.gkId) minutes.set(slot.gkId, (minutes.get(slot.gkId) ?? 0) + slot.endMinute - slot.startMinute)
     }
-    const minutes = [keeperMinutes.get('p1') ?? 0, keeperMinutes.get('p2') ?? 0]
-    expect(Math.abs(minutes[0]! - minutes[1]!)).toBeLessThanOrEqual(20)
+    expect(Math.abs((minutes.get('p1') ?? 0) - (minutes.get('p2') ?? 0))).toBeLessThanOrEqual(20)
   })
 
-  it('regen is deterministic for the same input', () => {
+  it('determinism: same input produces same shape', () => {
     const sport = makeFiveASide()
     const a = generatePlan({ sportConfig: sport, players: makePlayers(7), benchStintMinutes: 5, matchCount: 2 })
     const b = generatePlan({ sportConfig: sport, players: makePlayers(7), benchStintMinutes: 5, matchCount: 2 })
-    // Compare assignments + bench (ids are nanoid, so skip them)
-    expect(a.slots.map((s) => ({ a: s.assignments, b: s.bench }))).toEqual(
-      b.slots.map((s) => ({ a: s.assignments, b: s.bench })),
+    expect(a.slots.map((s) => ({ gk: s.gkId, f: s.fieldIds, b: s.benchIds }))).toEqual(
+      b.slots.map((s) => ({ gk: s.gkId, f: s.fieldIds, b: s.benchIds })),
     )
   })
 
-  it('benchCount roughly equal across players (B1)', () => {
+  it('benchCount roughly equal across players', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const result = generatePlan({
       sportConfig: sport,
@@ -202,5 +184,41 @@ describe('generatePlan (integration)', () => {
     })
     const counts = makePlayers(7).map((p) => benchCount(result.slots, p.id))
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2)
+  })
+
+  it('position overlay fills every outfield slot for healthy roster', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(8),
+      benchStintMinutes: 5,
+      matchCount: 1,
+    })
+    for (const slot of result.slots) {
+      for (const ls of sport.lineupSlots) {
+        expect(slot.positions[ls.slotId]).toBeTruthy()
+      }
+    }
+  })
+
+  it('within period, position continuity for returning field players', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 1,
+    })
+    for (let i = 1; i < result.slots.length; i++) {
+      const prev = result.slots[i - 1]!.positions
+      const curr = result.slots[i]!.positions
+      const prevSlotByPlayer = new Map<string, string>()
+      for (const [slotId, pid] of Object.entries(prev)) if (pid) prevSlotByPlayer.set(pid, slotId)
+      for (const [slotId, pid] of Object.entries(curr)) {
+        if (!pid) continue
+        const prevSlot = prevSlotByPlayer.get(pid)
+        if (prevSlot) expect(slotId).toBe(prevSlot)
+      }
+    }
   })
 })

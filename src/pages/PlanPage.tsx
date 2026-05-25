@@ -19,6 +19,7 @@ type PlanStep = 'roster' | 'planner'
 type PositionRow = {
   id: string
   label: string
+  positionTypeId: string
   rotateEveryMinutes: number
   group: MatchPlan['sportConfig']['positionTypes'][number]['group']
 }
@@ -32,8 +33,9 @@ function makePositionRow(index: number): PositionRow {
   return {
     id: `pos_${nanoid(4)}`,
     label: index === 0 ? 'GK' : `P${index + 1}`,
+    positionTypeId: index === 0 ? 'keeper' : 'forward',
     rotateEveryMinutes: 0,
-    group: index === 0 ? 'keeper' : 'other',
+    group: index === 0 ? 'keeper' : 'forward',
   }
 }
 
@@ -42,7 +44,8 @@ function rowsFromSportConfig(sportConfig: MatchPlan['sportConfig']): PositionRow
     const position = sportConfig.positionTypes.find((type) => type.id === slot.positionTypeId)
     return {
       id: slot.slotId,
-      label: index === 0 ? 'GK' : (position?.label ?? slot.label),
+      label: index === 0 ? 'GK' : slot.label,
+      positionTypeId: slot.positionTypeId,
       rotateEveryMinutes: position?.rotateEveryMinutes ?? 0,
       group: index === 0 ? 'keeper' : (position?.group ?? 'other'),
     }
@@ -56,6 +59,7 @@ function ensurePositionCount(rows: PositionRow[], count: number): PositionRow[] 
   return next.map((row, index) => ({
     ...row,
     label: index === 0 ? 'GK' : row.label,
+    positionTypeId: index === 0 ? 'keeper' : row.positionTypeId,
     group: index === 0 ? 'keeper' : row.group,
   }))
 }
@@ -67,14 +71,35 @@ function buildSportConfig(
   periodDurationMinutes: number,
 ): MatchPlan['sportConfig'] {
   const totalMatchMinutes = periodCount * periodDurationMinutes
-  const normalizedPositions = positions.map((position, index) => ({
-    ...position,
-    label: index === 0 ? 'GK' : position.label.trim() || `P${index + 1}`,
-    group: index === 0 ? 'keeper' : position.group,
-    rotateEveryMinutes: Math.min(position.rotateEveryMinutes, totalMatchMinutes),
-  }))
+  const keeperRotate = Math.min(positions[0]?.rotateEveryMinutes ?? 0, totalMatchMinutes)
+  const normalizedPositions = positions.map((position, index) => {
+    const label = index === 0 ? 'GK' : position.label.trim() || `P${index + 1}`
+    return {
+      ...position,
+      label,
+      positionTypeId: index === 0 ? 'gk' : label.toLowerCase(),
+      group: index === 0 ? ('keeper' as const) : position.group,
+    }
+  })
   const bench = Math.max(0, totalPlayers - normalizedPositions.length)
 
+  // One positionType per unique label so player exclusions apply per acronym (LB, CB, ST, ...).
+  const positionTypes: MatchPlan['sportConfig']['positionTypes'] = []
+  const seen = new Set<string>()
+  for (const position of normalizedPositions) {
+    if (seen.has(position.positionTypeId)) continue
+    seen.add(position.positionTypeId)
+    positionTypes.push({
+      id: position.positionTypeId,
+      label: position.positionTypeId === 'gk' ? 'Goalkeeper' : position.label,
+      shortLabel: position.label,
+      group: position.group,
+      isKeeper: position.positionTypeId === 'gk',
+      rotateEveryMinutes: position.positionTypeId === 'gk' ? keeperRotate : 0,
+    })
+  }
+
+  const slotCounter = new Map<string, number>()
   return {
     presetId: 'custom',
     name: `${normalizedPositions.length}-a-side`,
@@ -83,19 +108,16 @@ function buildSportConfig(
     periodCount,
     periodDurationMinutes,
     hasKeeper: true,
-    positionTypes: normalizedPositions.map((position, index) => ({
-      id: position.id,
-      label: position.label,
-      shortLabel: position.label.slice(0, 4),
-      group: index === 0 ? ('keeper' as const) : position.group,
-      isKeeper: index === 0,
-      rotateEveryMinutes: index === 0 ? position.rotateEveryMinutes : 0,
-    })),
-    lineupSlots: normalizedPositions.map((position) => ({
-      slotId: position.id,
-      positionTypeId: position.id,
-      label: position.label,
-    })),
+    positionTypes,
+    lineupSlots: normalizedPositions.map((position) => {
+      const n = (slotCounter.get(position.positionTypeId) ?? 0) + 1
+      slotCounter.set(position.positionTypeId, n)
+      return {
+        slotId: `${position.positionTypeId}_${n}`,
+        positionTypeId: position.positionTypeId,
+        label: position.label,
+      }
+    }),
   }
 }
 
@@ -120,170 +142,147 @@ function buildGenerationSignature(
   benchStintMinutes: number,
   matchCount: number,
   absentPlayerIds: string[],
-  slots: MatchPlan['slots'],
+  pins: MatchPlan['pins'],
+  changeKeeperMidPeriod: boolean,
 ) {
   return JSON.stringify({
     benchStintMinutes,
     matchCount,
     absentPlayerIds: [...absentPlayerIds].sort(),
-    positions: sportConfig.positionTypes
-      .filter((position) => position.isKeeper)
-      .map((position) => ({
-        id: position.id,
-        rotateEveryMinutes: position.rotateEveryMinutes,
-      })),
     roster: roster.map((player) => ({
       id: player.id,
       level: normalizePlayerLevel(player.level),
       excludedPositionTypeIds: [...player.excludedPositionTypeIds].sort(),
     })),
-    lockedSlotIds: slots.filter((s) => s.locked).map((s) => s.id).sort(),
+    pins,
+    periods: sportConfig.periodCount,
+    periodDuration: sportConfig.periodDurationMinutes,
+    totalOnField: sportConfig.totalOnField,
+    lineup: sportConfig.lineupSlots.map((s) => `${s.positionTypeId}:${s.label}`),
+    changeKeeperMidPeriod,
   })
 }
 
-function EditPlanSetupModal({
+function PlanSetupCard({
   plan,
-  onClose,
-  onSave,
+  onApply,
 }: {
   plan: MatchPlan
-  onClose: () => void
-  onSave: (updates: Partial<Omit<MatchPlan, 'id' | 'createdAt'>>) => void
+  onApply: (updates: Partial<Omit<MatchPlan, 'id' | 'createdAt'>>) => void
 }) {
-  const [positions, setPositions] = useState<PositionRow[]>(() => rowsFromSportConfig(plan.sportConfig))
-  const [totalPlayers, setTotalPlayers] = useState(plan.roster.length)
-  const [periodCount, setPeriodCount] = useState(plan.sportConfig.periodCount)
-  const [periodDuration, setPeriodDuration] = useState(plan.sportConfig.periodDurationMinutes)
-
+  const positions = rowsFromSportConfig(plan.sportConfig)
+  const totalPlayers = plan.roster.length
+  const periodCount = plan.sportConfig.periodCount
+  const periodDuration = plan.sportConfig.periodDurationMinutes
   const onField = positions.length
   const benchSize = Math.max(0, totalPlayers - onField)
 
-  const handleOnFieldChange = (value: number) => {
-    setPositions((prev) => ensurePositionCount(prev, value))
-    setTotalPlayers((prev) => Math.max(prev, value))
-  }
-
-  const handleLabelChange = (id: string, label: string) => {
-    setPositions((prev) => prev.map((position, index) => (
-      position.id === id
-        ? { ...position, label: index === 0 ? 'GK' : label }
-        : position
-    )))
-  }
-
-  const handleSave = () => {
-    const nextSportConfig = buildSportConfig(positions, totalPlayers, periodCount, periodDuration)
-    const validPositionTypeIds = new Set(nextSportConfig.positionTypes.map((position) => position.id))
-    const resizedRoster = buildRosterForTotalPlayers(plan.roster, totalPlayers).map((player) => ({
+  const applySetup = (
+    nextPositions: PositionRow[],
+    nextTotalPlayers: number,
+    nextPeriodCount: number,
+    nextPeriodDuration: number,
+  ) => {
+    const nextSportConfig = buildSportConfig(
+      nextPositions,
+      nextTotalPlayers,
+      nextPeriodCount,
+      nextPeriodDuration,
+    )
+    const validPositionTypeIds = new Set(nextSportConfig.positionTypes.map((p) => p.id))
+    const resizedRoster = buildRosterForTotalPlayers(plan.roster, nextTotalPlayers).map((player) => ({
       ...player,
       excludedPositionTypeIds: player.excludedPositionTypeIds.filter((id) => validPositionTypeIds.has(id)),
     }))
-    const validRosterIds = new Set(resizedRoster.map((player) => player.id))
-    const totalMatchMinutes = periodCount * periodDuration
+    const validRosterIds = new Set(resizedRoster.map((p) => p.id))
+    const totalMatchMinutes = nextPeriodCount * nextPeriodDuration
 
-    onSave({
+    onApply({
       sportConfig: {
         ...nextSportConfig,
-        positionTypes: nextSportConfig.positionTypes.map((position) => ({
-          ...position,
-          rotateEveryMinutes: Math.min(position.rotateEveryMinutes, totalMatchMinutes),
+        positionTypes: nextSportConfig.positionTypes.map((p) => ({
+          ...p,
+          rotateEveryMinutes: Math.min(p.rotateEveryMinutes, totalMatchMinutes),
         })),
       },
       roster: resizedRoster,
       absentPlayerIds: plan.absentPlayerIds.filter((id) => validRosterIds.has(id)),
-      benchStintMinutes: Math.min(plan.benchStintMinutes, periodDuration),
+      benchStintMinutes: Math.min(plan.benchStintMinutes, nextPeriodDuration),
       slots: [],
+      pins: {},
     })
   }
 
+  const handleOnFieldChange = (value: number) => {
+    const nextPositions = ensurePositionCount(positions, value)
+    const nextTotal = Math.max(totalPlayers, value)
+    applySetup(nextPositions, nextTotal, periodCount, periodDuration)
+  }
+
+  const handleTotalPlayersChange = (value: number) => {
+    applySetup(positions, value, periodCount, periodDuration)
+  }
+
+  const handlePeriodCountChange = (value: number) => {
+    applySetup(positions, totalPlayers, value, periodDuration)
+  }
+
+  const handlePeriodDurationChange = (value: number) => {
+    applySetup(positions, totalPlayers, periodCount, value)
+  }
+
+  const handleLabelChange = (id: string, label: string) => {
+    const nextPositions = positions.map((position, index) =>
+      position.id === id
+        ? { ...position, label: index === 0 ? 'GK' : label }
+        : position,
+    )
+    applySetup(nextPositions, totalPlayers, periodCount, periodDuration)
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/35 p-3 backdrop-blur-sm sm:items-center sm:p-6">
-      <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.25)]">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-4 sm:px-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Plan setup</p>
-            <h2 className="mt-1 text-xl font-bold text-slate-900">Edit plan settings</h2>
-          </div>
-          <Button size="sm" variant="secondary" onClick={onClose}>
-            Close
-          </Button>
-        </div>
-
-        <div className="overflow-y-auto px-4 py-4 sm:px-6 sm:py-6">
-          <div className="space-y-5">
-            <Card className="space-y-4">
-              <NumberStepper
-                label="Players on field"
-                value={onField}
-                min={1}
-                max={15}
-                onChange={handleOnFieldChange}
-              />
-              <NumberStepper
-                label="Total players"
-                value={totalPlayers}
-                min={onField}
-                max={30}
-                onChange={setTotalPlayers}
-              />
-              <NumberStepper
-                label="Periods"
-                value={periodCount}
-                min={1}
-                max={4}
-                onChange={setPeriodCount}
-              />
-              <NumberStepper
-                label="Period duration (min)"
-                value={periodDuration}
-                min={5}
-                max={60}
-                onChange={setPeriodDuration}
-              />
-
-              <p className="text-xs text-slate-500">
-                {benchSize} on bench. The first position is always goalkeeper.
-              </p>
-            </Card>
-
-            <Card padding={false}>
-              <div className="border-b border-slate-100 px-4 py-3">
-                <p className="text-sm font-medium text-slate-800">Position names</p>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {positions.map((position, index) => (
-                  <div key={position.id} className="flex items-center gap-3 px-4 py-3">
-                    <span className="w-5 shrink-0 text-xs tabular-nums text-slate-400">{index + 1}</span>
-                    <input
-                      type="text"
-                      value={position.label}
-                      onChange={(event) => handleLabelChange(position.id, event.target.value)}
-                      disabled={index === 0}
-                      className={[
-                        'flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
-                        index === 0
-                          ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
-                          : 'border-slate-300 bg-white',
-                      ].join(' ')}
-                      placeholder={index === 0 ? 'GK' : `P${index + 1}`}
-                    />
-                    {index === 0 && (
-                      <span className="rounded-md border border-yellow-300 bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
-                        GK
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Button fullWidth size="lg" onClick={handleSave}>
-              Save setup
-            </Button>
-          </div>
-        </div>
+    <Card padding={false}>
+      <div className="border-b border-slate-100 px-4 py-3">
+        <p className="text-sm font-semibold text-slate-700">Plan setup</p>
       </div>
-    </div>
+      <div className="space-y-4 p-4">
+        <NumberStepper label="Players on field" value={onField} min={1} max={15} onChange={handleOnFieldChange} />
+        <NumberStepper label="Total players" value={totalPlayers} min={onField} max={30} onChange={handleTotalPlayersChange} />
+        <NumberStepper label="Periods" value={periodCount} min={1} max={4} onChange={handlePeriodCountChange} />
+        <NumberStepper label="Period duration (min)" value={periodDuration} min={5} max={60} onChange={handlePeriodDurationChange} />
+        <p className="text-xs text-slate-500">
+          {benchSize} on bench. First position is always goalkeeper.
+        </p>
+      </div>
+      <div className="border-t border-slate-100 px-4 py-3">
+        <p className="text-sm font-medium text-slate-800">Position names</p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {positions.map((position, index) => (
+          <div key={position.id} className="flex items-center gap-3 px-4 py-3">
+            <span className="w-5 shrink-0 text-xs tabular-nums text-slate-400">{index + 1}</span>
+            <input
+              type="text"
+              value={position.label}
+              onChange={(event) => handleLabelChange(position.id, event.target.value)}
+              disabled={index === 0}
+              className={[
+                'flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
+                index === 0
+                  ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
+                  : 'border-slate-300 bg-white',
+              ].join(' ')}
+              placeholder={index === 0 ? 'GK' : `P${index + 1}`}
+            />
+            {index === 0 && (
+              <span className="rounded-md border border-yellow-300 bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
+                GK
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </Card>
   )
 }
 
@@ -396,34 +395,24 @@ function PlannerStep({
   warnings: string[]
 }) {
   const { updateMatch } = useSavedPlansStore()
-  const [editingSetup, setEditingSetup] = useState(false)
 
-  const { sportConfig, slots, benchStintMinutes, matchCount } = plan
-
-  const updatePositionRotate = (positionTypeId: string, rotateEveryMinutes: number) => {
-    updateMatch(planId, {
-      sportConfig: {
-        ...sportConfig,
-        positionTypes: sportConfig.positionTypes.map((position) => (
-          position.id === positionTypeId ? { ...position, rotateEveryMinutes } : position
-        )),
-      },
-    })
-  }
+  const { sportConfig, slots, benchStintMinutes, matchCount, changeKeeperMidPeriod } = plan
 
   return (
     <div className="space-y-4">
-      <Button variant="secondary" size="sm" onClick={() => setEditingSetup(true)} fullWidth>
-        Edit plan setup
-      </Button>
+      <PlanSetupCard
+        plan={plan}
+        onApply={(updates) => updateMatch(planId, updates)}
+      />
 
       <SubstitutionSettings
         sportConfig={sportConfig}
         benchStintMinutes={benchStintMinutes}
         matchCount={matchCount}
+        changeKeeperMidPeriod={changeKeeperMidPeriod}
         onBenchStintChange={(value) => updateMatch(planId, { benchStintMinutes: value })}
         onMatchCountChange={(value) => updateMatch(planId, { matchCount: value })}
-        onPositionRotateChange={updatePositionRotate}
+        onChangeKeeperMidPeriodChange={(value) => updateMatch(planId, { changeKeeperMidPeriod: value })}
       />
 
       {warnings.length > 0 && (
@@ -438,19 +427,8 @@ function PlannerStep({
 
       {slots.length > 0 && (
         <p className="text-xs text-slate-500">
-          The plan updates automatically when players or planner settings change.
+          Plan updates automatically when players or planner settings change.
         </p>
-      )}
-
-      {editingSetup && (
-        <EditPlanSetupModal
-          plan={plan}
-          onClose={() => setEditingSetup(false)}
-          onSave={(updates) => {
-            updateMatch(planId, updates)
-            setEditingSetup(false)
-          }}
-        />
       )}
     </div>
   )
@@ -510,9 +488,18 @@ export function PlanPage() {
       plan.benchStintMinutes,
       plan.matchCount,
       plan.absentPlayerIds,
-      plan.slots,
+      plan.pins,
+      plan.changeKeeperMidPeriod,
     ),
-    [plan.sportConfig, plan.roster, plan.benchStintMinutes, plan.matchCount, plan.absentPlayerIds, plan.slots],
+    [
+      plan.sportConfig,
+      plan.roster,
+      plan.benchStintMinutes,
+      plan.matchCount,
+      plan.absentPlayerIds,
+      plan.pins,
+      plan.changeKeeperMidPeriod,
+    ],
   )
   const lastGeneratedSignatureRef = useRef(plan.slots.length > 0 ? generationSignature : null)
 
@@ -531,7 +518,8 @@ export function PlanPage() {
       players: activePlayers,
       benchStintMinutes: plan.benchStintMinutes,
       matchCount: plan.matchCount,
-      existingSlots: plan.slots,
+      pins: plan.pins,
+      changeKeeperMidPeriod: plan.changeKeeperMidPeriod,
     })
 
     setWarnings(result.warnings.map((warning) => warning.message))
@@ -543,6 +531,7 @@ export function PlanPage() {
     id,
     plan.benchStintMinutes,
     plan.matchCount,
+    plan.pins,
     plan.slots,
     plan.sportConfig,
     updateMatch,
