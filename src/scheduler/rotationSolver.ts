@@ -241,6 +241,17 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           kind: 'lock-conflict',
           message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} placed keeper on bench; keeper kept on field.`,
         })
+        // Bench shrunk by 1 — refill so on-field count stays exact.
+        if (bench.length < segBenchSpots) {
+          const fillCandidates = active
+            .filter((p) => p.id !== gkId && !benchSet.has(p.id))
+            .sort((a, b) => compareForBench(a, b, stats, isMatchStart, isMatchEnd))
+          for (const p of fillCandidates) {
+            if (bench.length >= segBenchSpots) break
+            bench.push(p.id)
+            benchSet.add(p.id)
+          }
+        }
       }
 
       const field = active.filter((p) => p.id !== gkId && !benchSet.has(p.id)).map((p) => p.id)

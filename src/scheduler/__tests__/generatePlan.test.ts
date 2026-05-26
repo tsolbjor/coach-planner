@@ -117,6 +117,27 @@ describe('generatePlan (integration)', () => {
     expect(fieldSet.has('p7')).toBe(false)
   })
 
+  it('bench pin containing keeper keeps exact on-field count', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const players = makePlayers(7)
+    // p1 would be auto-picked as keeper (id sort, all tied on keeperSegments).
+    // Pinning p1 + p7 to bench creates a keeper-vs-bench conflict.
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+      pins: { 0: { benchIds: ['p1', 'p7'] } },
+    })
+    const slot = result.slots[0]!
+    const fieldTotal = (slot.gkId ? 1 : 0) + slot.fieldIds.length
+    expect(fieldTotal).toBe(sport.totalOnField)
+    expect(slot.benchIds.length).toBe(players.length - sport.totalOnField)
+    // gkId must not appear in bench.
+    if (slot.gkId) expect(slot.benchIds).not.toContain(slot.gkId)
+    expect(result.warnings.map((w) => w.kind)).toContain('lock-conflict')
+  })
+
   it('player excluded from outfield positions still keeps pitch time via gk', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(7)
