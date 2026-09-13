@@ -16,9 +16,9 @@ const sections = [
       'The match is split into segments based on "Minutes on bench". A 40-min match with 5-min stints becomes 8 segments.',
       'For each segment, the planner picks who sits on the bench then fills the remaining field slots with eligible players.',
       'Bench priority leans on whoever has the most pitch time so far, with fewer bench appearances as a tiebreaker.',
-      'After a player comes off the bench they get at least 2 field segments before they can be benched again.',
-      'Match-start and match-end fairness: players who have already started or ended on the bench drop down the bench list at those boundaries.',
-      'Bench history resets between matches.',
+      'With the default settings, the planner avoids back-to-back bench segments for the same player.',
+      'Players who finish a period or match on the bench are brought back onto the field at the next period or match start when possible.',
+      'Other bench history still resets between matches.',
     ],
   },
   {
@@ -42,7 +42,7 @@ const sections = [
     title: 'Goalkeeper & Mid-Period Swap',
     points: [
       'One keeper is designated per period. The bench picker keeps that keeper on the field for the whole period.',
-      'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period. The new keeper comes from the bench.',
+      'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period when a bench keeper is available.',
       'For odd-segment periods, the swap happens in the middle of the swap segment so the new keeper gets half-segment prep on the bench first.',
       'The planner picks each period\'s keeper from players whose GK chip is still selected, preferring whoever has accumulated the fewest keeper segments.',
     ],

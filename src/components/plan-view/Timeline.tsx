@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Player, SportConfig, TimeSlot } from '../../types'
+import { getSlotPitchMinutesByPlayer } from '../../utils/pitchTime'
 
 interface TimelineProps {
   slots: TimeSlot[]
@@ -60,10 +61,9 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
   const fieldMinutes = new Map<string, number>()
   for (const p of players) fieldMinutes.set(p.id, 0)
   for (const slot of slots) {
-    const dur = slot.endMinute - slot.startMinute
-    if (slot.gkId) fieldMinutes.set(slot.gkId, (fieldMinutes.get(slot.gkId) ?? 0) + dur)
-    for (const id of slot.fieldIds) fieldMinutes.set(id, (fieldMinutes.get(id) ?? 0) + dur)
-    for (const id of slot.absentCreditedIds) fieldMinutes.set(id, (fieldMinutes.get(id) ?? 0) + dur)
+    for (const [playerId, minutes] of getSlotPitchMinutesByPlayer(slot).entries()) {
+      fieldMinutes.set(playerId, (fieldMinutes.get(playerId) ?? 0) + minutes)
+    }
   }
   const totalMatchMinutes = sportConfig.periodCount * sportConfig.periodDurationMinutes
 

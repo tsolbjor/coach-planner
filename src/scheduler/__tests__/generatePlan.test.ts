@@ -2,14 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { generatePlan } from '..'
 import { makeFiveASide, makePlayers } from './fixtures'
 import type { Player, TimeSlot } from '../../types'
+import { getPlayerPitchMinutes, getPlayerPitchMinutesForSlot } from '../../utils/pitchTime'
 
 function pitchTime(slots: TimeSlot[], playerId: string): number {
-  let total = 0
-  for (const slot of slots) {
-    const onField = slot.gkId === playerId || slot.fieldIds.includes(playerId)
-    if (onField) total += slot.endMinute - slot.startMinute
-  }
-  return total
+  return getPlayerPitchMinutes(slots, playerId)
 }
 
 function benchCount(slots: TimeSlot[], playerId: string): number {
@@ -41,6 +37,23 @@ describe('generatePlan (integration)', () => {
     for (let i = 1; i < result.slots.length; i++) {
       const prev = new Set(result.slots[i - 1]!.benchIds)
       for (const id of result.slots[i]!.benchIds) expect(prev.has(id)).toBe(false)
+    }
+  })
+
+  it('players benched at period end return for the next period start even with loose bench caps', () => {
+    const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 10 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      maxBenchSegments: 3,
+    })
+    const periodOneEnd = result.slots.find((slot) => slot.periodIndex === 0 && slot.endMinute === 10)!
+    const periodTwoStart = result.slots.find((slot) => slot.periodIndex === 1 && slot.startMinute === 10)!
+    const nextOnField = new Set([...(periodTwoStart.gkId ? [periodTwoStart.gkId] : []), ...periodTwoStart.fieldIds])
+    for (const benchedId of periodOneEnd.benchIds) {
+      expect(nextOnField.has(benchedId)).toBe(true)
     }
   })
 
@@ -86,6 +99,23 @@ describe('generatePlan (integration)', () => {
     const minutes = makePlayers(7).map((p) => pitchTime(result.slots, p.id))
     // ±2 segments across 3 matches with default (flexible) rotation settings.
     expect(Math.max(...minutes) - Math.min(...minutes)).toBeLessThanOrEqual(15)
+  })
+
+  it('players benched at match end return for the next match start even with loose bench caps', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 2,
+      maxBenchSegments: 3,
+    })
+    const matchOneEnd = result.slots.filter((slot) => slot.matchIndex === 0).at(-1)!
+    const matchTwoStart = result.slots.find((slot) => slot.matchIndex === 1 && slot.startMinute === 0)!
+    const nextOnField = new Set([...(matchTwoStart.gkId ? [matchTwoStart.gkId] : []), ...matchTwoStart.fieldIds])
+    for (const benchedId of matchOneEnd.benchIds) {
+      expect(nextOnField.has(benchedId)).toBe(true)
+    }
   })
 
   it('gk pin honoured at exact segment', () => {
@@ -138,6 +168,22 @@ describe('generatePlan (integration)', () => {
     expect(result.warnings.map((w) => w.kind)).toContain('lock-conflict')
   })
 
+  it('bench pin plus absence trims bench to keep a full lineup', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      pins: { 0: { benchIds: ['p6', 'p7'], absentIds: ['p1'] } },
+    })
+    const slot = result.slots[0]!
+    const fieldTotal = (slot.gkId ? 1 : 0) + slot.fieldIds.length
+    expect(fieldTotal).toBe(sport.totalOnField)
+    expect(slot.benchIds).toHaveLength(1)
+    expect(result.warnings.map((w) => w.kind)).toContain('lock-conflict')
+  })
+
   it('player excluded from outfield positions still keeps pitch time via gk', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(7)
@@ -149,6 +195,19 @@ describe('generatePlan (integration)', () => {
       matchCount: 1,
     })
     expect(pitchTime(result.slots, 'p1')).toBeGreaterThan(0)
+  })
+
+  it('warns when player eligibility cannot fill all outfield positions', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const players: Player[] = makePlayers(5)
+    for (let i = 1; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['fwd']
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+    })
+    expect(result.warnings.map((warning) => warning.kind)).toContain('position-unavailable')
   })
 
   it('A10: never bench two L1 players at once', () => {
@@ -185,6 +244,41 @@ describe('generatePlan (integration)', () => {
       if (slot.gkId) minutes.set(slot.gkId, (minutes.get(slot.gkId) ?? 0) + slot.endMinute - slot.startMinute)
     }
     expect(Math.abs((minutes.get('p1') ?? 0) - (minutes.get('p2') ?? 0))).toBeLessThanOrEqual(20)
+  })
+
+  it('odd mid-segment keeper swap splits pitch time inside the swap segment', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(6),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      changeKeeperMidPeriod: true,
+    })
+    const swapSlot = result.slots.find((slot) => !!slot.midSwap)
+    expect(swapSlot?.midSwap).toBeTruthy()
+    const outgoing = swapSlot!.midSwap!.preGkId
+    const incoming = swapSlot!.gkId
+    expect(outgoing).toBeTruthy()
+    expect(incoming).toBeTruthy()
+    expect(outgoing).not.toBe(incoming)
+    expect(getPlayerPitchMinutesForSlot(swapSlot!, outgoing!)).toBe(2.5)
+    expect(getPlayerPitchMinutesForSlot(swapSlot!, incoming!)).toBe(2.5)
+  })
+
+  it('warns when a requested keeper mid-period swap cannot happen', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const players: Player[] = makePlayers(6)
+    for (let i = 1; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['gk']
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+      changeKeeperMidPeriod: true,
+    })
+
+    expect(result.warnings.some((warning) => warning.message.includes('Keeper mid-period swap skipped'))).toBe(true)
   })
 
   it('determinism: same input produces same shape', () => {

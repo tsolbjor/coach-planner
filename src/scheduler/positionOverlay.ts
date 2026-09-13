@@ -74,6 +74,14 @@ export function buildPositionOverlay(input: PositionOverlayInput): PositionOverl
       }
     }
 
+    const unfilledSlots = outfieldSlots.filter((slot) => !positions[slot.slotId])
+    if (unfilledSlots.length > 0) {
+      warnings.push({
+        kind: 'position-unavailable',
+        message: `Could not fill ${unfilledSlots.length} outfield position${unfilledSlots.length === 1 ? '' : 's'} at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} segment ${seg.segmentIndex + 1} with the current player eligibility.`,
+      })
+    }
+
     positionsBySegment.set(seg.segmentIndex, positions)
     prevPositions = positions
     prevMatchIndex = seg.matchIndex

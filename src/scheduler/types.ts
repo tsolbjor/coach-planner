@@ -28,6 +28,7 @@ export type SchedulerWarningKind =
   | 'bench-rotation-impossible'
   | 'l1-cap-infeasible'
   | 'lock-conflict'
+  | 'position-unavailable'
 
 export interface SchedulerWarning {
   kind: SchedulerWarningKind

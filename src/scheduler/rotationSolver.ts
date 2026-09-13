@@ -29,8 +29,8 @@ export interface RotationSolverResult {
 interface PlayerStats {
   benchCount: number
   pitchCount: number
-  startBenchCount: number
-  endBenchCount: number
+  periodStartBenchCount: number
+  periodEndBenchCount: number
   lastBenchedSeg: number
   keeperSegments: number
 }
@@ -71,8 +71,8 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     stats.set(p.id, {
       benchCount: 0,
       pitchCount: 0,
-      startBenchCount: 0,
-      endBenchCount: 0,
+      periodStartBenchCount: 0,
+      periodEndBenchCount: 0,
       lastBenchedSeg: -Infinity,
       keeperSegments: 0,
     })
@@ -89,6 +89,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
   let lastKeeperId: string | null = null
   let lastKeeperMatchIndex = -1
+  let mustPlayNextBoundary = new Set<string>()
 
   for (const [matchIndex, matchSegments] of segmentsByMatch.entries()) {
     matchSegments.sort((a, b) => a.segmentIndex - b.segmentIndex)
@@ -100,9 +101,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     }
     consecBenchCount.clear()
 
-    const firstSegIndex = matchSegments[0]!.segmentIndex
-    const lastSegIndex = matchSegments[matchSegments.length - 1]!.segmentIndex
-
     const segsPerPeriod = new Map<number, Segment[]>()
     for (const s of matchSegments) {
       const arr = segsPerPeriod.get(s.periodIndex) ?? []
@@ -113,15 +111,17 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     let prevBench = new Set<string>()
     let prevPeriodIndex = -1
     let prevGkId: string | null = null
+    const lastMatchSegmentIndex = matchSegments[matchSegments.length - 1]!.segmentIndex
 
     for (const seg of matchSegments) {
-      const isMatchStart = seg.segmentIndex === firstSegIndex
-      const isMatchEnd = seg.segmentIndex === lastSegIndex
       const newPeriod = seg.periodIndex !== prevPeriodIndex
+      const isPeriodStart = newPeriod
       const pin = pins[seg.segmentIndex] ?? {}
 
       const periodSegs = segsPerPeriod.get(seg.periodIndex) ?? []
       const idxInPeriod = periodSegs.findIndex((s) => s.segmentIndex === seg.segmentIndex)
+      const isPeriodEnd = idxInPeriod === periodSegs.length - 1
+      const isMatchEnd = seg.segmentIndex === lastMatchSegmentIndex
       const isOddPeriod = periodSegs.length % 2 === 1
       const midIdx = Math.floor(periodSegs.length / 2)
       const isMidPeriodSwap =
@@ -133,6 +133,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const active = players.filter((p) => !absentSet.has(p.id))
       const activeIds = new Set(active.map((p) => p.id))
       const segBenchSpots = Math.max(0, active.length - sportConfig.totalOnField)
+      const boundaryCarryOverFieldIds = isPeriodStart
+        ? new Set([...mustPlayNextBoundary].filter((id) => activeIds.has(id)))
+        : new Set<string>()
 
       let gkId: string | null = null
       let bench: string[]
@@ -156,15 +159,18 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         minSubsPerSegment,
         maxSubsPerSegment,
         stats,
-        isMatchStart,
-        isMatchEnd,
+        isBoundaryStart: isPeriodStart,
+        isBoundaryEnd: isPeriodEnd,
         isKeeperEligible,
         isL1,
         warnings,
       }
 
       if (isMidSegmentSwap && prevGkId && activeIds.has(prevGkId) && noPinOverride) {
-        preBenchForMidSwap = pickBench({ ...benchArgs, forcedFieldIds: new Set([prevGkId]) })
+        preBenchForMidSwap = pickBench({
+          ...benchArgs,
+          forcedFieldIds: new Set([prevGkId, ...boundaryCarryOverFieldIds]),
+        })
         const benchKeeperCandidates = preBenchForMidSwap
           .map((id) => playerById.get(id))
           .filter((p): p is Player => !!p && isKeeperEligible(p))
@@ -177,6 +183,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         } else {
           gkId = prevGkId
           bench = preBenchForMidSwap
+          warnings.push({
+            kind: 'keeper-unavailable',
+            message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+          })
         }
       } else {
         if (pin.gkId !== undefined) {
@@ -204,6 +214,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
           } else {
             gkId = prevGkId
+            warnings.push({
+              kind: 'keeper-unavailable',
+              message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+            })
           }
         } else if (!newPeriod && prevGkId && activeIds.has(prevGkId)) {
           gkId = prevGkId
@@ -229,29 +243,55 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             .map((p) => p.id)
             .slice(0, segBenchSpots)
         } else {
-          bench = pickBench({ ...benchArgs, forcedFieldIds: gkId ? new Set([gkId]) : new Set() })
+          bench = pickBench({
+            ...benchArgs,
+            forcedFieldIds: new Set([...(gkId ? [gkId] : []), ...boundaryCarryOverFieldIds]),
+          })
         }
       }
+
+      const rawBenchHadKeeper = !!gkId && bench.includes(gkId)
+      if (rawBenchHadKeeper) {
+        warnings.push({
+          kind: 'lock-conflict',
+          message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} placed keeper on bench; keeper kept on field.`,
+        })
+      }
+
+      const normalizedBench = normalizeBench({
+        bench,
+        active,
+        gkId,
+        benchSpots: segBenchSpots,
+        forcedFieldIds: boundaryCarryOverFieldIds,
+        stats,
+        isBoundaryStart: isPeriodStart,
+        isBoundaryEnd: isPeriodEnd,
+        warnings,
+        segmentLabel: `match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}`,
+        hadExactBenchPin: !!pin.benchIds,
+      })
+      bench = normalizedBench
 
       const benchSet = new Set(bench)
       if (gkId && benchSet.has(gkId)) {
         benchSet.delete(gkId)
         bench = bench.filter((id) => id !== gkId)
-        warnings.push({
-          kind: 'lock-conflict',
-          message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} placed keeper on bench; keeper kept on field.`,
+        bench = normalizeBench({
+          bench,
+          active,
+          gkId,
+          benchSpots: segBenchSpots,
+          forcedFieldIds: boundaryCarryOverFieldIds,
+          stats,
+          isBoundaryStart: isPeriodStart,
+          isBoundaryEnd: isPeriodEnd,
+          warnings,
+          segmentLabel: `match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}`,
+          hadExactBenchPin: !!pin.benchIds,
         })
-        // Bench shrunk by 1 — refill so on-field count stays exact.
-        if (bench.length < segBenchSpots) {
-          const fillCandidates = active
-            .filter((p) => p.id !== gkId && !benchSet.has(p.id))
-            .sort((a, b) => compareForBench(a, b, stats, isMatchStart, isMatchEnd))
-          for (const p of fillCandidates) {
-            if (bench.length >= segBenchSpots) break
-            bench.push(p.id)
-            benchSet.add(p.id)
-          }
-        }
+        benchSet.clear()
+        for (const id of bench) benchSet.add(id)
       }
 
       const field = active.filter((p) => p.id !== gkId && !benchSet.has(p.id)).map((p) => p.id)
@@ -278,20 +318,28 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         const s = stats.get(id)
         if (!s) continue
         s.benchCount++
-        if (isMatchStart) s.startBenchCount++
-        if (isMatchEnd) s.endBenchCount++
+        if (isPeriodStart) s.periodStartBenchCount++
+        if (isPeriodEnd) s.periodEndBenchCount++
         s.lastBenchedSeg = seg.segmentIndex
       }
-      if (gkId) {
-        const s = stats.get(gkId)
-        if (s) {
-          s.pitchCount++
-          s.keeperSegments++
-        }
+      const pitchCredit = new Map<string, number>()
+      const keeperCredit = new Map<string, number>()
+      if (isMidSegmentSwap && midPeriodSwapApplied && preBenchForMidSwap) {
+        const preFieldIds = active
+          .filter((p) => p.id !== midPeriodSwapApplied.outgoing && !preBenchForMidSwap.includes(p.id))
+          .map((p) => p.id)
+        addCredits(pitchCredit, keeperCredit, midPeriodSwapApplied.outgoing, preFieldIds, 0.5)
+        addCredits(pitchCredit, keeperCredit, gkId, field, 0.5)
+      } else {
+        addCredits(pitchCredit, keeperCredit, gkId, field, 1)
       }
-      for (const id of field) {
+      for (const [id, credit] of pitchCredit.entries()) {
         const s = stats.get(id)
-        if (s) s.pitchCount++
+        if (s) s.pitchCount += credit
+      }
+      for (const [id, credit] of keeperCredit.entries()) {
+        const s = stats.get(id)
+        if (s) s.keeperSegments += credit
       }
       for (const id of creditedSet) {
         const s = stats.get(id)
@@ -312,6 +360,11 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
+      if (isPeriodEnd || isMatchEnd) {
+        mustPlayNextBoundary = new Set(bench)
+      } else if (isPeriodStart && mustPlayNextBoundary.size > 0) {
+        mustPlayNextBoundary = new Set()
+      }
       if (gkId) {
         lastKeeperId = gkId
         lastKeeperMatchIndex = matchIndex
@@ -351,8 +404,8 @@ interface PickBenchArgs {
   minSubsPerSegment: number
   maxSubsPerSegment: number
   stats: Map<string, PlayerStats>
-  isMatchStart: boolean
-  isMatchEnd: boolean
+  isBoundaryStart: boolean
+  isBoundaryEnd: boolean
   isKeeperEligible: (p: Player) => boolean
   isL1: (p: Player) => boolean
   forcedFieldIds: Set<string>
@@ -369,8 +422,8 @@ function pickBench(args: PickBenchArgs): string[] {
     minSubsPerSegment,
     maxSubsPerSegment,
     stats,
-    isMatchStart,
-    isMatchEnd,
+    isBoundaryStart,
+    isBoundaryEnd,
     isKeeperEligible,
     isL1,
     forcedFieldIds,
@@ -381,7 +434,7 @@ function pickBench(args: PickBenchArgs): string[] {
 
   // First segment of match (no prev bench): fairness-only pick.
   if (prevBench.size === 0) {
-    return fairnessPick(active, benchSpots, forcedFieldIds, stats, isL1, isKeeperEligible, isMatchStart, isMatchEnd, warnings)
+    return fairnessPick(active, benchSpots, forcedFieldIds, stats, isL1, isKeeperEligible, isBoundaryStart, isBoundaryEnd, warnings)
   }
 
   const activeIds = new Set(active.map((p) => p.id))
@@ -420,7 +473,7 @@ function pickBench(args: PickBenchArgs): string[] {
   const fieldCandidates = active.filter(
     (p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id),
   )
-  fieldCandidates.sort((a, b) => compareForBench(a, b, stats, isMatchStart, isMatchEnd))
+  fieldCandidates.sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
 
   const totalKeeperEligible = active.filter(isKeeperEligible).length
   let keOnNewBench = stayedBench.filter((id) => {
@@ -481,12 +534,12 @@ function fairnessPick(
   stats: Map<string, PlayerStats>,
   isL1: (p: Player) => boolean,
   isKeeperEligible: (p: Player) => boolean,
-  isMatchStart: boolean,
-  isMatchEnd: boolean,
+  isBoundaryStart: boolean,
+  isBoundaryEnd: boolean,
   warnings: SchedulerWarning[],
 ): string[] {
   const candidates = active.filter((p) => !forcedFieldIds.has(p.id))
-  const sorted = [...candidates].sort((a, b) => compareForBench(a, b, stats, isMatchStart, isMatchEnd))
+  const sorted = [...candidates].sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
 
   const totalKE = active.filter(isKeeperEligible).length
   let keOnBench = 0
@@ -534,19 +587,107 @@ function compareForBench(
   a: Player,
   b: Player,
   stats: Map<string, PlayerStats>,
-  isMatchStart: boolean,
-  isMatchEnd: boolean,
+  isBoundaryStart: boolean,
+  isBoundaryEnd: boolean,
 ): number {
   const sa = stats.get(a.id)!
   const sb = stats.get(b.id)!
   if (sa.pitchCount !== sb.pitchCount) return sb.pitchCount - sa.pitchCount
   if (sa.benchCount !== sb.benchCount) return sa.benchCount - sb.benchCount
-  if (isMatchStart && sa.startBenchCount !== sb.startBenchCount) {
-    return sa.startBenchCount - sb.startBenchCount
+  if (isBoundaryStart && sa.periodStartBenchCount !== sb.periodStartBenchCount) {
+    return sa.periodStartBenchCount - sb.periodStartBenchCount
   }
-  if (isMatchEnd && sa.endBenchCount !== sb.endBenchCount) {
-    return sa.endBenchCount - sb.endBenchCount
+  if (isBoundaryEnd && sa.periodEndBenchCount !== sb.periodEndBenchCount) {
+    return sa.periodEndBenchCount - sb.periodEndBenchCount
   }
   if (sa.lastBenchedSeg !== sb.lastBenchedSeg) return sa.lastBenchedSeg - sb.lastBenchedSeg
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
+
+function normalizeBench(args: {
+  bench: string[]
+  active: Player[]
+  gkId: string | null
+  benchSpots: number
+  forcedFieldIds: Set<string>
+  stats: Map<string, PlayerStats>
+  isBoundaryStart: boolean
+  isBoundaryEnd: boolean
+  warnings: SchedulerWarning[]
+  segmentLabel: string
+  hadExactBenchPin: boolean
+}): string[] {
+  const {
+    bench,
+    active,
+    gkId,
+    benchSpots,
+    forcedFieldIds,
+    stats,
+    isBoundaryStart,
+    isBoundaryEnd,
+    warnings,
+    segmentLabel,
+    hadExactBenchPin,
+  } = args
+  const activeIds = new Set(active.map((p) => p.id))
+  const nextBench: string[] = []
+  const seen = new Set<string>()
+  const originalBenchLength = bench.length
+
+  for (const id of bench) {
+    if (id === gkId || forcedFieldIds.has(id) || !activeIds.has(id) || seen.has(id)) continue
+    seen.add(id)
+    nextBench.push(id)
+  }
+
+  if (hadExactBenchPin && nextBench.length < originalBenchLength) {
+    warnings.push({
+      kind: 'lock-conflict',
+      message: `Pin at ${segmentLabel} could not keep every requested bench player and was adjusted to preserve the lineup rules.`,
+    })
+  }
+
+  if (nextBench.length > benchSpots) {
+    if (hadExactBenchPin && nextBench.length === originalBenchLength) {
+      warnings.push({
+        kind: 'lock-conflict',
+        message: `Pin at ${segmentLabel} benches more active players than possible; trimmed to keep a full lineup.`,
+      })
+    }
+    nextBench.splice(benchSpots)
+    seen.clear()
+    for (const id of nextBench) seen.add(id)
+  }
+
+  if (nextBench.length < benchSpots) {
+    const fillCandidates = active
+      .filter((p) => p.id !== gkId && !seen.has(p.id))
+      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+    for (const p of fillCandidates) {
+      if (nextBench.length >= benchSpots) break
+        if (forcedFieldIds.has(p.id)) continue
+        nextBench.push(p.id)
+        seen.add(p.id)
+      }
+  }
+
+  return nextBench
+}
+
+function addCredits(
+  pitchCredit: Map<string, number>,
+  keeperCredit: Map<string, number>,
+  gkId: string | null,
+  fieldIds: string[],
+  credit: number,
+) {
+  if (credit <= 0) return
+  if (gkId) {
+    pitchCredit.set(gkId, (pitchCredit.get(gkId) ?? 0) + credit)
+    keeperCredit.set(gkId, (keeperCredit.get(gkId) ?? 0) + credit)
+  }
+  for (const id of fieldIds) {
+    pitchCredit.set(id, (pitchCredit.get(id) ?? 0) + credit)
+  }
 }
