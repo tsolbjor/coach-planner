@@ -230,6 +230,14 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         }
       }
 
+      const rawBenchHadKeeper = !!gkId && bench.includes(gkId)
+      if (rawBenchHadKeeper) {
+        warnings.push({
+          kind: 'lock-conflict',
+          message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} placed keeper on bench; keeper kept on field.`,
+        })
+      }
+
       const normalizedBench = normalizeBench({
         bench,
         active,
@@ -248,10 +256,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       if (gkId && benchSet.has(gkId)) {
         benchSet.delete(gkId)
         bench = bench.filter((id) => id !== gkId)
-        warnings.push({
-          kind: 'lock-conflict',
-          message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} placed keeper on bench; keeper kept on field.`,
-        })
         bench = normalizeBench({
           bench,
           active,
