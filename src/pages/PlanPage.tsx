@@ -48,6 +48,10 @@ export function PlanPage() {
   const [setupOpen, setSetupOpen] = useState(false)
   const [playersOpen, setPlayersOpen] = useState(false)
   const [editSeg, setEditSeg] = useState<{ segmentIndex: number; playerId: string } | null>(null)
+  const [viewMode, setViewMode] = useState<'plan' | 'in-game'>('plan')
+  const [focusMatchIndex, setFocusMatchIndex] = useState(0)
+  const [focusPeriodIndex, setFocusPeriodIndex] = useState(0)
+  const [focusSegmentIndex, setFocusSegmentIndex] = useState<number | null>(null)
 
   const item = items.find((entry) => entry.kind === 'match' && entry.plan.id === id)
 
@@ -92,6 +96,42 @@ export function PlanPage() {
     lastGeneratedSignatureRef.current = generationSignature
   }, [item, id, activePlayers, generationSignature, updateMatch])
 
+  const slotEntries = useMemo(() => {
+    if (!item || item.kind !== 'match') return []
+    return item.plan.slots.map((slot, index) => ({ slot, index }))
+  }, [item])
+
+  useEffect(() => {
+    if (!item || item.kind !== 'match') return
+    const maxMatchIndex = Math.max(0, item.plan.matchCount - 1)
+    if (focusMatchIndex > maxMatchIndex) setFocusMatchIndex(maxMatchIndex)
+  }, [item, focusMatchIndex])
+
+  useEffect(() => {
+    if (!item || item.kind !== 'match') return
+    const maxPeriodIndex = Math.max(0, item.plan.sportConfig.periodCount - 1)
+    if (focusPeriodIndex > maxPeriodIndex) setFocusPeriodIndex(maxPeriodIndex)
+  }, [item, focusPeriodIndex])
+
+  const focusSlotEntries = useMemo(
+    () =>
+      slotEntries.filter(
+        ({ slot }) => slot.matchIndex === focusMatchIndex && slot.periodIndex === focusPeriodIndex,
+      ),
+    [slotEntries, focusMatchIndex, focusPeriodIndex],
+  )
+
+  useEffect(() => {
+    if (focusSlotEntries.length === 0) {
+      if (focusSegmentIndex !== null) setFocusSegmentIndex(null)
+      return
+    }
+    const inScope =
+      focusSegmentIndex !== null &&
+      focusSlotEntries.some((entry) => entry.index === focusSegmentIndex)
+    if (!inScope) setFocusSegmentIndex(focusSlotEntries[0]!.index)
+  }, [focusSlotEntries, focusSegmentIndex])
+
   if (!item || item.kind !== 'match' || !id) {
     return (
       <AppShell flowItems={buildTopFlowItems()} width="default">
@@ -106,6 +146,27 @@ export function PlanPage() {
   const plan = item.plan
   const playerById = new Map(plan.roster.map((p) => [p.id, p]))
   const pinCount = Object.keys(plan.pins).length
+  const activeEntryIndex =
+    focusSegmentIndex !== null
+      ? focusSlotEntries.findIndex((entry) => entry.index === focusSegmentIndex)
+      : -1
+  const activeEntry = activeEntryIndex >= 0 ? focusSlotEntries[activeEntryIndex] : null
+  const nextEntry =
+    activeEntryIndex >= 0 && activeEntryIndex + 1 < focusSlotEntries.length
+      ? focusSlotEntries[activeEntryIndex + 1]
+      : null
+  const activeOnIds = activeEntry
+    ? [activeEntry.slot.gkId, ...activeEntry.slot.fieldIds].filter((pid): pid is string => !!pid)
+    : []
+  const nextOnIds = nextEntry
+    ? [nextEntry.slot.gkId, ...nextEntry.slot.fieldIds].filter((pid): pid is string => !!pid)
+    : []
+  const activeOnSet = new Set(activeOnIds)
+  const nextOnSet = new Set(nextOnIds)
+  const offNextIds = activeOnIds.filter((pid) => !nextOnSet.has(pid))
+  const onNextIds = nextOnIds.filter((pid) => !activeOnSet.has(pid))
+  const activeBenchIds = activeEntry?.slot.benchIds ?? []
+  const activeAbsentIds = activeEntry?.slot.absentIds ?? []
 
   const handleNameSave = () => {
     const name = nameInput.trim()
@@ -122,6 +183,11 @@ export function PlanPage() {
         setTimeout(() => setShareCopied(false), 2000)
       })
       .catch(() => alert('Copy failed — try again'))
+  }
+
+  const openActiveSegmentEditor = (playerId: string) => {
+    if (!activeEntry) return
+    setEditSeg({ segmentIndex: activeEntry.index, playerId })
   }
 
   return (
@@ -196,163 +262,355 @@ export function PlanPage() {
           </div>
         )}
 
-        <div className="space-y-8">
-          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-            <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
-              <p className="text-xs font-semibold text-slate-500">Player timeline · click any cell to edit</p>
-            </div>
-            <div className="p-2 lg:p-4">
-              <Timeline
-                slots={plan.slots}
-                sportConfig={plan.sportConfig}
-                players={plan.roster}
-                onCellClick={(segmentIndex, playerId) => setEditSeg({ segmentIndex, playerId })}
-              />
-            </div>
+        <div className="mb-4">
+          <div className="inline-flex w-full rounded-2xl border border-slate-200 bg-slate-100 p-1 sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setViewMode('plan')}
+              className={[
+                'flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors sm:flex-none',
+                viewMode === 'plan' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600',
+              ].join(' ')}
+            >
+              Full plan
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('in-game')}
+              className={[
+                'flex-1 rounded-xl px-3 py-2 text-sm font-medium transition-colors sm:flex-none',
+                viewMode === 'in-game' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600',
+              ].join(' ')}
+            >
+              In-game
+            </button>
           </div>
+        </div>
 
-          {Array.from({ length: plan.matchCount }, (_, mi) => (
-            <section key={mi} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 lg:p-5">
-              {plan.matchCount > 1 && <h2 className="font-bold text-slate-800 mb-4">Match {mi + 1}</h2>}
-              <div className="space-y-5">
-                {Array.from({ length: plan.sportConfig.periodCount }, (_, pi) => {
-                  const periodSlots = plan.slots.filter(
-                    (s) => s.matchIndex === mi && s.periodIndex === pi,
-                  )
-                  const periodBg = pi % 2 === 0 ? 'bg-white' : 'bg-blue-50/60'
-                  return (
-                    <div
-                      key={pi}
-                      className={[
-                        'rounded-2xl border p-4',
-                        periodBg,
-                        pi % 2 === 0 ? 'border-slate-200' : 'border-blue-100',
-                      ].join(' ')}
+        {viewMode === 'in-game' ? (
+          <div className="space-y-4">
+            <section className="rounded-2xl border border-blue-200 bg-white p-3 sm:p-4">
+              <div className="mb-3 flex flex-wrap gap-2">
+                {plan.matchCount > 1 && (
+                  <label className="flex min-w-[9rem] flex-1 flex-col gap-1 text-xs font-semibold text-slate-500">
+                    Match
+                    <select
+                      value={focusMatchIndex}
+                      onChange={(event) => {
+                        setFocusMatchIndex(Number(event.target.value))
+                        setFocusSegmentIndex(null)
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800"
                     >
-                      <h3 className="font-semibold text-slate-700 text-sm mb-3">
-                        {plan.sportConfig.periodCount > 1 ? `Period ${pi + 1}` : 'Full match'}
-                      </h3>
-                      {periodSlots[0] && (
-                        <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
-                          <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 mb-2">
-                            Suggested starting lineup
-                          </p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {plan.sportConfig.lineupSlots.map((ls) => {
-                              const pid = periodSlots[0]!.positions[ls.slotId]
-                              const name = pid ? playerById.get(pid)?.name : null
-                              return (
-                                <span
-                                  key={ls.slotId}
-                                  className="text-xs rounded-lg bg-white px-2 py-1 border border-blue-100"
-                                >
-                                  <span className="text-blue-700 font-semibold">{ls.label} </span>
-                                  {name ?? <span className="text-red-400">—</span>}
-                                </span>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
-                        {periodSlots.map((slot, idx) => {
-                          const next = periodSlots[idx + 1]
-                          const curIds = new Set([...(slot.gkId ? [slot.gkId] : []), ...slot.fieldIds])
-                          const nextIds = next
-                            ? new Set([...(next.gkId ? [next.gkId] : []), ...next.fieldIds])
-                            : null
-                          const goingOff = nextIds
-                            ? [...curIds].filter((pid) => !nextIds.has(pid))
-                            : []
-                          const gkPlayer = slot.gkId ? playerById.get(slot.gkId) : null
-                          return (
-                            <div
-                              key={slot.id}
-                              className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm"
-                            >
-                              <p className="text-xs font-semibold text-slate-500 mb-2">
-                                {Math.floor(slot.startMinute)}'–{Math.ceil(slot.endMinute)}'
+                      {Array.from({ length: plan.matchCount }, (_, mi) => (
+                        <option key={mi} value={mi}>
+                          Match {mi + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {plan.sportConfig.periodCount > 1 && (
+                  <label className="flex min-w-[9rem] flex-1 flex-col gap-1 text-xs font-semibold text-slate-500">
+                    Period
+                    <select
+                      value={focusPeriodIndex}
+                      onChange={(event) => {
+                        setFocusPeriodIndex(Number(event.target.value))
+                        setFocusSegmentIndex(null)
+                      }}
+                      className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800"
+                    >
+                      {Array.from({ length: plan.sportConfig.periodCount }, (_, pi) => (
+                        <option key={pi} value={pi}>
+                          Period {pi + 1}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              {focusSlotEntries.length === 0 ? (
+                <p className="text-sm text-slate-500">No segments in this period.</p>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const prev = Math.max(0, activeEntryIndex - 1)
+                        setFocusSegmentIndex(focusSlotEntries[prev]!.index)
+                      }}
+                      disabled={activeEntryIndex <= 0}
+                    >
+                      Prev
+                    </Button>
+                    <select
+                      value={activeEntry?.index ?? ''}
+                      onChange={(event) => setFocusSegmentIndex(Number(event.target.value))}
+                      className="min-touch min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800"
+                    >
+                      {focusSlotEntries.map((entry) => (
+                        <option key={entry.slot.id} value={entry.index}>
+                          {Math.floor(entry.slot.startMinute)}'–{Math.ceil(entry.slot.endMinute)}'
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const next = Math.min(focusSlotEntries.length - 1, activeEntryIndex + 1)
+                        setFocusSegmentIndex(focusSlotEntries[next]!.index)
+                      }}
+                      disabled={activeEntryIndex < 0 || activeEntryIndex >= focusSlotEntries.length - 1}
+                    >
+                      Next
+                    </Button>
+                  </div>
+
+                  {activeEntry && (
+                    <>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          Current segment
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">
+                          Match {activeEntry.slot.matchIndex + 1} · Period {activeEntry.slot.periodIndex + 1} ·{' '}
+                          {Math.floor(activeEntry.slot.startMinute)}'–{Math.ceil(activeEntry.slot.endMinute)}'
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          Select any player below to adjust now. Remaining plan auto-rebalances.
+                        </p>
+                      </div>
+
+                      <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">
+                          Next sub
+                        </p>
+                        {nextEntry ? (
+                          <div className="mt-1 space-y-1">
+                            <p className="text-sm font-semibold text-amber-900">
+                              At {Math.floor(nextEntry.slot.startMinute)}'
+                            </p>
+                            <p className="text-xs text-amber-800">
+                              Off:{' '}
+                              {offNextIds.length > 0
+                                ? offNextIds.map((pid) => playerById.get(pid)?.name ?? pid).join(', ')
+                                : 'No changes'}
+                            </p>
+                            <p className="text-xs text-amber-800">
+                              On:{' '}
+                              {onNextIds.length > 0
+                                ? onNextIds.map((pid) => playerById.get(pid)?.name ?? pid).join(', ')
+                                : 'No changes'}
+                            </p>
+                            {nextEntry.slot.midSwap && (
+                              <p className="text-xs text-amber-800">
+                                GK mid-swap @ {Math.floor(nextEntry.slot.midSwap.atMinute)}':{' '}
+                                {playerById.get(nextEntry.slot.midSwap.preGkId ?? '')?.name ?? '—'} →{' '}
+                                {playerById.get(nextEntry.slot.gkId ?? '')?.name ?? '—'}
                               </p>
-                              <div className="space-y-1.5">
-                                {slot.midSwap && (
-                                  <p className="text-[10px] font-semibold uppercase text-amber-700">
-                                    Mid-segment keeper swap @ {Math.floor(slot.midSwap.atMinute)}'
-                                  </p>
-                                )}
-                                <div>
-                                  <span className="text-[10px] font-semibold uppercase text-yellow-700 mr-2">GK</span>
-                                  <span className="text-xs font-medium text-slate-700">
-                                    {slot.midSwap ? (
-                                      <>
-                                        {playerById.get(slot.midSwap.preGkId ?? '')?.name ?? '—'}{' '}
-                                        <span className="text-slate-400">→</span>{' '}
-                                        {gkPlayer?.name ?? '—'}
-                                      </>
-                                    ) : (
-                                      gkPlayer?.name ?? <span className="text-red-400">—</span>
-                                    )}
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-1 text-xs text-amber-800">Final segment in this period.</p>
+                        )}
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                          Quick adjust
+                        </p>
+                        <QuickGroup
+                          label="On field"
+                          ids={activeOnIds}
+                          playerById={playerById}
+                          onPick={openActiveSegmentEditor}
+                          tone="field"
+                        />
+                        <QuickGroup
+                          label="Bench"
+                          ids={activeBenchIds}
+                          playerById={playerById}
+                          onPick={openActiveSegmentEditor}
+                          tone="bench"
+                        />
+                        <QuickGroup
+                          label="Absent"
+                          ids={activeAbsentIds}
+                          playerById={playerById}
+                          onPick={openActiveSegmentEditor}
+                          tone="absent"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </section>
+          </div>
+        ) : (
+          <div className="space-y-8">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
+                <p className="text-xs font-semibold text-slate-500">Player timeline · click any cell to edit</p>
+              </div>
+              <div className="p-2 lg:p-4">
+                <Timeline
+                  slots={plan.slots}
+                  sportConfig={plan.sportConfig}
+                  players={plan.roster}
+                  onCellClick={(segmentIndex, playerId) => setEditSeg({ segmentIndex, playerId })}
+                />
+              </div>
+            </div>
+
+            {Array.from({ length: plan.matchCount }, (_, mi) => (
+              <section key={mi} className="rounded-3xl border border-slate-200 bg-slate-50/80 p-4 lg:p-5">
+                {plan.matchCount > 1 && <h2 className="font-bold text-slate-800 mb-4">Match {mi + 1}</h2>}
+                <div className="space-y-5">
+                  {Array.from({ length: plan.sportConfig.periodCount }, (_, pi) => {
+                    const periodSlots = plan.slots.filter(
+                      (s) => s.matchIndex === mi && s.periodIndex === pi,
+                    )
+                    const periodBg = pi % 2 === 0 ? 'bg-white' : 'bg-blue-50/60'
+                    return (
+                      <div
+                        key={pi}
+                        className={[
+                          'rounded-2xl border p-4',
+                          periodBg,
+                          pi % 2 === 0 ? 'border-slate-200' : 'border-blue-100',
+                        ].join(' ')}
+                      >
+                        <h3 className="font-semibold text-slate-700 text-sm mb-3">
+                          {plan.sportConfig.periodCount > 1 ? `Period ${pi + 1}` : 'Full match'}
+                        </h3>
+                        {periodSlots[0] && (
+                          <div className="mb-3 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-blue-700 mb-2">
+                              Suggested starting lineup
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {plan.sportConfig.lineupSlots.map((ls) => {
+                                const pid = periodSlots[0]!.positions[ls.slotId]
+                                const name = pid ? playerById.get(pid)?.name : null
+                                return (
+                                  <span
+                                    key={ls.slotId}
+                                    className="text-xs rounded-lg bg-white px-2 py-1 border border-blue-100"
+                                  >
+                                    <span className="text-blue-700 font-semibold">{ls.label} </span>
+                                    {name ?? <span className="text-red-400">—</span>}
                                   </span>
-                                </div>
-                                <div>
-                                  <span className="text-[10px] font-semibold uppercase text-blue-700 mr-2">Field</span>
-                                  {slot.fieldIds.length === 0 ? (
-                                    <span className="text-xs text-slate-400">—</span>
-                                  ) : (
-                                    <span className="inline-flex flex-wrap gap-1">
-                                      {slot.fieldIds.map((pid) => {
-                                        const name = playerById.get(pid)?.name ?? pid
-                                        const off = goingOff.includes(pid)
-                                        return (
-                                          <span
-                                            key={pid}
-                                            className={[
-                                              'text-xs rounded-md px-1.5 py-0.5',
-                                              off
-                                                ? 'bg-amber-200 text-amber-900 font-semibold ring-1 ring-amber-400'
-                                                : 'text-slate-700',
-                                            ].join(' ')}
-                                          >
-                                            {name}
-                                            {off && ' ↓'}
-                                          </span>
-                                        )
-                                      })}
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+                          {periodSlots.map((slot, idx) => {
+                            const next = periodSlots[idx + 1]
+                            const curIds = new Set([...(slot.gkId ? [slot.gkId] : []), ...slot.fieldIds])
+                            const nextIds = next
+                              ? new Set([...(next.gkId ? [next.gkId] : []), ...next.fieldIds])
+                              : null
+                            const goingOff = nextIds
+                              ? [...curIds].filter((pid) => !nextIds.has(pid))
+                              : []
+                            const gkPlayer = slot.gkId ? playerById.get(slot.gkId) : null
+                            return (
+                              <div
+                                key={slot.id}
+                                className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm"
+                              >
+                                <p className="text-xs font-semibold text-slate-500 mb-2">
+                                  {Math.floor(slot.startMinute)}'–{Math.ceil(slot.endMinute)}'
+                                </p>
+                                <div className="space-y-1.5">
+                                  {slot.midSwap && (
+                                    <p className="text-[10px] font-semibold uppercase text-amber-700">
+                                      Mid-segment keeper swap @ {Math.floor(slot.midSwap.atMinute)}'
+                                    </p>
+                                  )}
+                                  <div>
+                                    <span className="text-[10px] font-semibold uppercase text-yellow-700 mr-2">GK</span>
+                                    <span className="text-xs font-medium text-slate-700">
+                                      {slot.midSwap ? (
+                                        <>
+                                          {playerById.get(slot.midSwap.preGkId ?? '')?.name ?? '—'}{' '}
+                                          <span className="text-slate-400">→</span>{' '}
+                                          {gkPlayer?.name ?? '—'}
+                                        </>
+                                      ) : (
+                                        gkPlayer?.name ?? <span className="text-red-400">—</span>
+                                      )}
                                     </span>
+                                  </div>
+                                  <div>
+                                    <span className="text-[10px] font-semibold uppercase text-blue-700 mr-2">Field</span>
+                                    {slot.fieldIds.length === 0 ? (
+                                      <span className="text-xs text-slate-400">—</span>
+                                    ) : (
+                                      <span className="inline-flex flex-wrap gap-1">
+                                        {slot.fieldIds.map((pid) => {
+                                          const name = playerById.get(pid)?.name ?? pid
+                                          const off = goingOff.includes(pid)
+                                          return (
+                                            <span
+                                              key={pid}
+                                              className={[
+                                                'text-xs rounded-md px-1.5 py-0.5',
+                                                off
+                                                  ? 'bg-amber-200 text-amber-900 font-semibold ring-1 ring-amber-400'
+                                                  : 'text-slate-700',
+                                              ].join(' ')}
+                                            >
+                                              {name}
+                                              {off && ' ↓'}
+                                            </span>
+                                          )
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {slot.benchIds.length > 0 && (
+                                    <div>
+                                      <span className="text-[10px] font-semibold uppercase text-slate-500 mr-2">Bench</span>
+                                      <span className="text-xs text-slate-500">
+                                        {slot.benchIds.map((pid) => playerById.get(pid)?.name ?? pid).join(', ')}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {slot.absentIds.length > 0 && (
+                                    <div>
+                                      <span className="text-[10px] font-semibold uppercase text-rose-700 mr-2">Absent</span>
+                                      <span className="text-xs text-rose-700">
+                                        {slot.absentIds
+                                          .map((pid) => {
+                                            const name = playerById.get(pid)?.name ?? pid
+                                            return slot.absentCreditedIds.includes(pid) ? `${name}*` : name
+                                          })
+                                          .join(', ')}
+                                      </span>
+                                    </div>
                                   )}
                                 </div>
-                                {slot.benchIds.length > 0 && (
-                                  <div>
-                                    <span className="text-[10px] font-semibold uppercase text-slate-500 mr-2">Bench</span>
-                                    <span className="text-xs text-slate-500">
-                                      {slot.benchIds.map((pid) => playerById.get(pid)?.name ?? pid).join(', ')}
-                                    </span>
-                                  </div>
-                                )}
-                                {slot.absentIds.length > 0 && (
-                                  <div>
-                                    <span className="text-[10px] font-semibold uppercase text-rose-700 mr-2">Absent</span>
-                                    <span className="text-xs text-rose-700">
-                                      {slot.absentIds
-                                        .map((pid) => {
-                                          const name = playerById.get(pid)?.name ?? pid
-                                          return slot.absentCreditedIds.includes(pid) ? `${name}*` : name
-                                        })
-                                        .join(', ')}
-                                    </span>
-                                  </div>
-                                )}
                               </div>
-                            </div>
-                          )
-                        })}
+                            )
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
-          ))}
-        </div>
+                    )
+                  })}
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="print-only hidden">
@@ -375,5 +633,49 @@ export function PlanPage() {
         />
       )}
     </AppShell>
+  )
+}
+
+function QuickGroup({
+  label,
+  ids,
+  playerById,
+  onPick,
+  tone,
+}: {
+  label: string
+  ids: string[]
+  playerById: Map<string, { name: string }>
+  onPick: (playerId: string) => void
+  tone: 'field' | 'bench' | 'absent'
+}) {
+  const toneClass = {
+    field: 'border-blue-200 bg-blue-50 text-blue-900',
+    bench: 'border-slate-300 bg-slate-100 text-slate-700',
+    absent: 'border-rose-200 bg-rose-50 text-rose-800',
+  }[tone]
+  const statusText = { field: 'Field', bench: 'Bench', absent: 'Absent' }[tone]
+
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      {ids.length === 0 ? (
+        <p className="text-xs text-slate-400">—</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {ids.map((pid) => (
+            <button
+              key={pid}
+              type="button"
+              onClick={() => onPick(pid)}
+              aria-label={`${label}: ${playerById.get(pid)?.name ?? pid}`}
+              className={['rounded-lg border px-2.5 py-1.5 text-xs font-medium', toneClass].join(' ')}
+            >
+              {statusText} · {playerById.get(pid)?.name ?? pid}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
