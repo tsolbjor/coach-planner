@@ -104,13 +104,13 @@ export function PlanPage() {
   useEffect(() => {
     if (!item || item.kind !== 'match') return
     const maxMatchIndex = Math.max(0, item.plan.matchCount - 1)
-    if (focusMatchIndex > maxMatchIndex) setFocusMatchIndex(0)
+    if (focusMatchIndex > maxMatchIndex) setFocusMatchIndex(maxMatchIndex)
   }, [item, focusMatchIndex])
 
   useEffect(() => {
     if (!item || item.kind !== 'match') return
     const maxPeriodIndex = Math.max(0, item.plan.sportConfig.periodCount - 1)
-    if (focusPeriodIndex > maxPeriodIndex) setFocusPeriodIndex(0)
+    if (focusPeriodIndex > maxPeriodIndex) setFocusPeriodIndex(maxPeriodIndex)
   }, [item, focusPeriodIndex])
 
   const focusSlotEntries = useMemo(
@@ -143,58 +143,14 @@ export function PlanPage() {
     )
   }
 
-  function QuickGroup({
-    label,
-    ids,
-    playerById,
-    onPick,
-    tone,
-  }: {
-    label: string
-    ids: string[]
-    playerById: Map<string, { name: string }>
-    onPick: (playerId: string) => void
-    tone: 'field' | 'bench' | 'absent'
-  }) {
-    const toneClass = {
-      field: 'border-blue-200 bg-blue-50 text-blue-900',
-      bench: 'border-slate-300 bg-slate-100 text-slate-700',
-      absent: 'border-rose-200 bg-rose-50 text-rose-800',
-    }[tone]
-
-    return (
-      <div>
-        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
-        {ids.length === 0 ? (
-          <p className="text-xs text-slate-400">—</p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {ids.map((pid) => (
-              <button
-                key={pid}
-                type="button"
-                onClick={() => onPick(pid)}
-                className={['rounded-lg border px-2.5 py-1.5 text-xs font-medium', toneClass].join(' ')}
-              >
-                {playerById.get(pid)?.name ?? pid}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   const plan = item.plan
   const playerById = new Map(plan.roster.map((p) => [p.id, p]))
   const pinCount = Object.keys(plan.pins).length
-  const activeEntry =
+  const activeEntryIndex =
     focusSegmentIndex !== null
-      ? focusSlotEntries.find((entry) => entry.index === focusSegmentIndex) ?? null
-      : null
-  const activeEntryIndex = activeEntry
-    ? focusSlotEntries.findIndex((entry) => entry.index === activeEntry.index)
-    : -1
+      ? focusSlotEntries.findIndex((entry) => entry.index === focusSegmentIndex)
+      : -1
+  const activeEntry = activeEntryIndex >= 0 ? focusSlotEntries[activeEntryIndex] : null
   const nextEntry =
     activeEntryIndex >= 0 && activeEntryIndex + 1 < focusSlotEntries.length
       ? focusSlotEntries[activeEntryIndex + 1]
@@ -205,12 +161,12 @@ export function PlanPage() {
   const nextOnIds = nextEntry
     ? [nextEntry.slot.gkId, ...nextEntry.slot.fieldIds].filter((pid): pid is string => !!pid)
     : []
-  const offNextIds = activeOnIds.filter((pid) => !nextOnIds.includes(pid))
-  const onNextIds = nextOnIds.filter((pid) => !activeOnIds.includes(pid))
+  const activeOnSet = new Set(activeOnIds)
+  const nextOnSet = new Set(nextOnIds)
+  const offNextIds = activeOnIds.filter((pid) => !nextOnSet.has(pid))
+  const onNextIds = nextOnIds.filter((pid) => !activeOnSet.has(pid))
   const activeBenchIds = activeEntry?.slot.benchIds ?? []
-  const activeAbsentIds = activeEntry
-    ? [...activeEntry.slot.absentIds, ...activeEntry.slot.absentCreditedIds]
-    : []
+  const activeAbsentIds = activeEntry?.slot.absentIds ?? []
 
   const handleNameSave = () => {
     const name = nameInput.trim()
@@ -227,6 +183,11 @@ export function PlanPage() {
         setTimeout(() => setShareCopied(false), 2000)
       })
       .catch(() => alert('Copy failed — try again'))
+  }
+
+  const openActiveSegmentEditor = (playerId: string) => {
+    if (!activeEntry) return
+    setEditSeg({ segmentIndex: activeEntry.index, playerId })
   }
 
   return (
@@ -421,7 +382,7 @@ export function PlanPage() {
                           {Math.floor(activeEntry.slot.startMinute)}'–{Math.ceil(activeEntry.slot.endMinute)}'
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Tap any player below to adjust now. Remaining plan auto-rebalances.
+                          Select any player below to adjust now. Remaining plan auto-rebalances.
                         </p>
                       </div>
 
@@ -446,6 +407,13 @@ export function PlanPage() {
                                 ? onNextIds.map((pid) => playerById.get(pid)?.name ?? pid).join(', ')
                                 : 'No changes'}
                             </p>
+                            {nextEntry.slot.midSwap && (
+                              <p className="text-xs text-amber-800">
+                                GK mid-swap @ {Math.floor(nextEntry.slot.midSwap.atMinute)}':{' '}
+                                {playerById.get(nextEntry.slot.midSwap.preGkId ?? '')?.name ?? '—'} →{' '}
+                                {playerById.get(nextEntry.slot.gkId ?? '')?.name ?? '—'}
+                              </p>
+                            )}
                           </div>
                         ) : (
                           <p className="mt-1 text-xs text-amber-800">Final segment in this period.</p>
@@ -460,27 +428,21 @@ export function PlanPage() {
                           label="On field"
                           ids={activeOnIds}
                           playerById={playerById}
-                          onPick={(playerId) =>
-                            setEditSeg({ segmentIndex: activeEntry.index, playerId })
-                          }
+                          onPick={openActiveSegmentEditor}
                           tone="field"
                         />
                         <QuickGroup
                           label="Bench"
                           ids={activeBenchIds}
                           playerById={playerById}
-                          onPick={(playerId) =>
-                            setEditSeg({ segmentIndex: activeEntry.index, playerId })
-                          }
+                          onPick={openActiveSegmentEditor}
                           tone="bench"
                         />
                         <QuickGroup
                           label="Absent"
                           ids={activeAbsentIds}
                           playerById={playerById}
-                          onPick={(playerId) =>
-                            setEditSeg({ segmentIndex: activeEntry.index, playerId })
-                          }
+                          onPick={openActiveSegmentEditor}
                           tone="absent"
                         />
                       </div>
@@ -671,5 +633,49 @@ export function PlanPage() {
         />
       )}
     </AppShell>
+  )
+}
+
+function QuickGroup({
+  label,
+  ids,
+  playerById,
+  onPick,
+  tone,
+}: {
+  label: string
+  ids: string[]
+  playerById: Map<string, { name: string }>
+  onPick: (playerId: string) => void
+  tone: 'field' | 'bench' | 'absent'
+}) {
+  const toneClass = {
+    field: 'border-blue-200 bg-blue-50 text-blue-900',
+    bench: 'border-slate-300 bg-slate-100 text-slate-700',
+    absent: 'border-rose-200 bg-rose-50 text-rose-800',
+  }[tone]
+  const statusText = { field: 'Field', bench: 'Bench', absent: 'Absent' }[tone]
+
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">{label}</p>
+      {ids.length === 0 ? (
+        <p className="text-xs text-slate-400">—</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {ids.map((pid) => (
+            <button
+              key={pid}
+              type="button"
+              onClick={() => onPick(pid)}
+              aria-label={`${label}: ${playerById.get(pid)?.name ?? pid}`}
+              className={['rounded-lg border px-2.5 py-1.5 text-xs font-medium', toneClass].join(' ')}
+            >
+              {statusText} · {playerById.get(pid)?.name ?? pid}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
