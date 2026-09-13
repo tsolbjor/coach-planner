@@ -58,6 +58,10 @@ function isOnFieldState(state: CellState) {
   return state === 'gk' || state === 'field'
 }
 
+function isBenchState(state: CellState) {
+  return state === 'bench'
+}
+
 function buildPlayerStats(slots: TimeSlot[], playerId: string) {
   let benchStints = 0
   let minConsecutiveOnField = 0
@@ -73,7 +77,14 @@ function buildPlayerStats(slots: TimeSlot[], playerId: string) {
     const onField = isOnFieldState(state)
     const wasOnField = previousState ? isOnFieldState(previousState) : false
 
-    if (previousState !== 'bench' && state === 'bench') benchStints += 1
+    if (
+      previousState &&
+      previousMatchIndex === slot.matchIndex &&
+      !isBenchState(previousState) &&
+      isBenchState(state)
+    ) {
+      benchStints += 1
+    }
 
     if (onField) {
       currentOnFieldRun += 1
@@ -88,8 +99,8 @@ function buildPlayerStats(slots: TimeSlot[], playerId: string) {
     }
 
     if (previousState && previousMatchIndex === slot.matchIndex) {
-      if (wasOnField && state === 'bench') subbedOffCount += 1
-      if (previousState === 'bench' && onField) subbedOnCount += 1
+      if (wasOnField && isBenchState(state)) subbedOffCount += 1
+      if (isBenchState(previousState) && onField) subbedOnCount += 1
     }
 
     previousState = state
@@ -139,6 +150,7 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
       on: [...nxt].filter((id) => !cur.has(id)),
     }
   })
+  const playerStats = new Map(players.map((player) => [player.id, buildPlayerStats(slots, player.id)]))
 
   return (
     <div className="overflow-x-auto">
@@ -176,36 +188,42 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Bench stints"
+              aria-label="Bench stints"
             >
               Bench
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Min consecutive on-field stints"
+              aria-label="Minimum consecutive on-field stints"
             >
               Min C
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Max consecutive on-field stints"
+              aria-label="Maximum consecutive on-field stints"
             >
               Max C
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Times subbed off"
+              aria-label="Times subbed off"
             >
               Off
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Times subbed on"
+              aria-label="Times subbed on"
             >
               On
             </th>
             <th
               className="rounded-tr-xl bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Total substitutions (on + off)"
+              aria-label="Total substitutions (on plus off)"
             >
               Subs
             </th>
@@ -245,7 +263,14 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
           {players.map((player) => {
             const mins = fieldMinutes.get(player.id) ?? 0
             const pct = totalMatchMinutes > 0 ? Math.round((mins / totalMatchMinutes) * 100) : 0
-            const stats = buildPlayerStats(slots, player.id)
+            const stats = playerStats.get(player.id) ?? {
+              benchStints: 0,
+              minConsecutiveOnField: 0,
+              maxConsecutiveOnField: 0,
+              subbedOffCount: 0,
+              subbedOnCount: 0,
+              totalSubEvents: 0,
+            }
             return (
               <tr key={player.id} className="border-t border-slate-200">
                 <td className="py-1.5 pr-3 font-medium text-slate-800 sticky left-0 bg-white z-10 truncate max-w-[8rem]">
