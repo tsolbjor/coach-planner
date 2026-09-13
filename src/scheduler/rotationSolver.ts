@@ -111,6 +111,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     let prevBench = new Set<string>()
     let prevPeriodIndex = -1
     let prevGkId: string | null = null
+    const lastMatchSegmentIndex = matchSegments[matchSegments.length - 1]!.segmentIndex
 
     for (const seg of matchSegments) {
       const newPeriod = seg.periodIndex !== prevPeriodIndex
@@ -120,6 +121,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const periodSegs = segsPerPeriod.get(seg.periodIndex) ?? []
       const idxInPeriod = periodSegs.findIndex((s) => s.segmentIndex === seg.segmentIndex)
       const isPeriodEnd = idxInPeriod === periodSegs.length - 1
+      const isMatchEnd = seg.segmentIndex === lastMatchSegmentIndex
       const isOddPeriod = periodSegs.length % 2 === 1
       const midIdx = Math.floor(periodSegs.length / 2)
       const isMidPeriodSwap =
@@ -350,7 +352,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
-      if (isPeriodEnd) {
+      if (isPeriodEnd || isMatchEnd) {
         mustPlayNextBoundary = new Set(bench)
       } else if (isPeriodStart && mustPlayNextBoundary.size > 0) {
         mustPlayNextBoundary = new Set()
