@@ -42,7 +42,7 @@ const sections = [
     title: 'Goalkeeper & Mid-Period Swap',
     points: [
       'One keeper is designated per period. The bench picker keeps that keeper on the field for the whole period.',
-      'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period. The new keeper comes from the bench.',
+      'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period when a bench keeper is available.',
       'For odd-segment periods, the swap happens in the middle of the swap segment so the new keeper gets half-segment prep on the bench first.',
       'The planner picks each period\'s keeper from players whose GK chip is still selected, preferring whoever has accumulated the fewest keeper segments.',
     ],

@@ -197,6 +197,19 @@ describe('generatePlan (integration)', () => {
     expect(pitchTime(result.slots, 'p1')).toBeGreaterThan(0)
   })
 
+  it('warns when player eligibility cannot fill all outfield positions', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const players: Player[] = makePlayers(5)
+    for (let i = 1; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['fwd']
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+    })
+    expect(result.warnings.map((warning) => warning.kind)).toContain('position-unavailable')
+  })
+
   it('A10: never bench two L1 players at once', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = [
@@ -251,6 +264,21 @@ describe('generatePlan (integration)', () => {
     expect(outgoing).not.toBe(incoming)
     expect(getPlayerPitchMinutesForSlot(swapSlot!, outgoing!)).toBe(2.5)
     expect(getPlayerPitchMinutesForSlot(swapSlot!, incoming!)).toBe(2.5)
+  })
+
+  it('warns when a requested keeper mid-period swap cannot happen', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const players: Player[] = makePlayers(6)
+    for (let i = 1; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['gk']
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+      changeKeeperMidPeriod: true,
+    })
+
+    expect(result.warnings.some((warning) => warning.message.includes('Keeper mid-period swap skipped'))).toBe(true)
   })
 
   it('determinism: same input produces same shape', () => {

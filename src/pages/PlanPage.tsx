@@ -47,7 +47,7 @@ export function PlanPage() {
   const [shareCopied, setShareCopied] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [playersOpen, setPlayersOpen] = useState(false)
-  const [editSeg, setEditSeg] = useState<{ segmentIndex: number; playerId: string } | null>(null)
+  const [editSeg, setEditSeg] = useState<{ segmentIndex: number; playerId: string; mode: 'plan' | 'in-game' } | null>(null)
   const [viewMode, setViewMode] = useState<'plan' | 'in-game'>('plan')
   const [focusMatchIndex, setFocusMatchIndex] = useState(0)
   const [focusPeriodIndex, setFocusPeriodIndex] = useState(0)
@@ -187,7 +187,7 @@ export function PlanPage() {
 
   const openActiveSegmentEditor = (playerId: string) => {
     if (!activeEntry) return
-    setEditSeg({ segmentIndex: activeEntry.index, playerId })
+    setEditSeg({ segmentIndex: activeEntry.index, playerId, mode: 'in-game' })
   }
 
   return (
@@ -463,7 +463,7 @@ export function PlanPage() {
                   slots={plan.slots}
                   sportConfig={plan.sportConfig}
                   players={plan.roster}
-                  onCellClick={(segmentIndex, playerId) => setEditSeg({ segmentIndex, playerId })}
+                  onCellClick={(segmentIndex, playerId) => setEditSeg({ segmentIndex, playerId, mode: 'plan' })}
                 />
               </div>
             </div>
@@ -628,6 +628,7 @@ export function PlanPage() {
           players={plan.roster}
           pins={plan.pins}
           totalOnField={plan.sportConfig.totalOnField}
+          interactionMode={editSeg.mode}
           onClose={() => setEditSeg(null)}
           onSetPins={(updates) => setSegmentPins(id, updates)}
         />

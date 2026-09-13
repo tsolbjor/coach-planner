@@ -9,6 +9,7 @@ interface SegmentEditorProps {
   players: Player[]
   pins: Record<number, SegmentPin>
   totalOnField: number
+  interactionMode?: 'plan' | 'in-game'
   onClose: () => void
   onSetPins: (updates: Record<number, SegmentPin | null>) => void
 }
@@ -43,6 +44,64 @@ function swap(slot: TimeSlot, a: string, b: string): SegmentPin {
   setRole(a, roleB)
   setRole(b, roleA)
   return { gkId: gk, fieldIds: field, benchIds: bench }
+}
+
+function isOnFieldRole(role: CellRole | 'unknown'): role is 'gk' | 'field' {
+  return role === 'gk' || role === 'field'
+}
+
+function keepPlayerBenched(existing: SegmentPin | undefined, playerId: string): SegmentPin {
+  const next: SegmentPin = { ...(existing ?? {}) }
+  next.benchIds = Array.from(new Set([...(next.benchIds ?? []), playerId]))
+  if (next.gkId === playerId) delete next.gkId
+  if (next.fieldIds) {
+    next.fieldIds = next.fieldIds.filter((id) => id !== playerId)
+    if (next.fieldIds.length === 0) delete next.fieldIds
+  }
+  return next
+}
+
+export function buildSwapPinUpdates(args: {
+  slots: TimeSlot[]
+  pins: Record<number, SegmentPin>
+  segmentIndex: number
+  selectedPlayerId: string
+  otherPlayerId: string
+  interactionMode?: 'plan' | 'in-game'
+}): Record<number, SegmentPin | null> {
+  const {
+    slots,
+    pins,
+    segmentIndex,
+    selectedPlayerId,
+    otherPlayerId,
+    interactionMode = 'plan',
+  } = args
+  const slot = slots[segmentIndex]
+  if (!slot || otherPlayerId === selectedPlayerId) return {}
+
+  const updates: Record<number, SegmentPin | null> = {
+    [segmentIndex]: swap(slot, selectedPlayerId, otherPlayerId),
+  }
+  if (interactionMode !== 'in-game') return updates
+
+  const selectedRole = roleOf(slot, selectedPlayerId)
+  const otherRole = roleOf(slot, otherPlayerId)
+  const subbedOffId = isOnFieldRole(selectedRole)
+    ? selectedPlayerId
+    : isOnFieldRole(otherRole)
+      ? otherPlayerId
+      : null
+  const subbedOnId = selectedRole === 'bench' ? selectedPlayerId : otherRole === 'bench' ? otherPlayerId : null
+  if (!subbedOffId || !subbedOnId) return updates
+
+  const nextSlot = slots[segmentIndex + 1]
+  if (!nextSlot || nextSlot.matchIndex !== slot.matchIndex || nextSlot.periodIndex !== slot.periodIndex) {
+    return updates
+  }
+
+  updates[segmentIndex + 1] = keepPlayerBenched(pins[segmentIndex + 1], subbedOffId)
+  return updates
 }
 
 function applyAbsence(existing: SegmentPin | undefined, playerId: string, credit: boolean): SegmentPin {
@@ -107,6 +166,7 @@ export function SegmentEditor({
   players,
   pins,
   totalOnField,
+  interactionMode = 'plan',
   onClose,
   onSetPins,
 }: SegmentEditorProps) {
@@ -128,7 +188,16 @@ export function SegmentEditor({
 
   const handleSwap = (otherId: string) => {
     if (otherId === selectedPlayerId) return
-    onSetPins({ [segmentIndex]: swap(slot, selectedPlayerId, otherId) })
+    onSetPins(
+      buildSwapPinUpdates({
+        slots,
+        pins,
+        segmentIndex,
+        selectedPlayerId,
+        otherPlayerId: otherId,
+        interactionMode,
+      }),
+    )
     onClose()
   }
 

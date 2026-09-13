@@ -102,7 +102,7 @@ export function SubstitutionSettings({
               <div>
                 <p className="text-sm font-medium text-slate-700">Change keeper mid-period</p>
                 <p className="text-xs text-slate-500">
-                  Swap keeper with a benched player at the midpoint of each period. Old keeper goes to the bench and rejoins normal rotation next segment.
+                  Swap keeper with a benched player at the midpoint of each period when a bench keeper is available. Old keeper goes to the bench and rejoins normal rotation next segment.
                 </p>
               </div>
             </label>

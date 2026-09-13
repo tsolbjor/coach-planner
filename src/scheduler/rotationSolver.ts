@@ -183,6 +183,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         } else {
           gkId = prevGkId
           bench = preBenchForMidSwap
+          warnings.push({
+            kind: 'keeper-unavailable',
+            message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+          })
         }
       } else {
         if (pin.gkId !== undefined) {
@@ -210,6 +214,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
           } else {
             gkId = prevGkId
+            warnings.push({
+              kind: 'keeper-unavailable',
+              message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+            })
           }
         } else if (!newPeriod && prevGkId && activeIds.has(prevGkId)) {
           gkId = prevGkId
