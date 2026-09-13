@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Player, SportConfig, TimeSlot } from '../../types'
 import { getSlotPitchMinutesByPlayer } from '../../utils/pitchTime'
 
@@ -79,8 +79,23 @@ function buildPlayerStats(slots: TimeSlot[], playerId: string) {
 
     if (
       previousState &&
+      previousMatchIndex !== null &&
+      previousMatchIndex !== slot.matchIndex &&
+      currentOnFieldRun > 0
+    ) {
+      if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
+        minConsecutiveOnField = currentOnFieldRun
+      }
+      if (currentOnFieldRun > maxConsecutiveOnField) {
+        maxConsecutiveOnField = currentOnFieldRun
+      }
+      currentOnFieldRun = 0
+    }
+
+    if (
+      previousState &&
       previousMatchIndex === slot.matchIndex &&
-      !isBenchState(previousState) &&
+      wasOnField &&
       isBenchState(state)
     ) {
       benchStints += 1
@@ -150,7 +165,10 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
       on: [...nxt].filter((id) => !cur.has(id)),
     }
   })
-  const playerStats = new Map(players.map((player) => [player.id, buildPlayerStats(slots, player.id)]))
+  const playerStats = useMemo(
+    () => new Map(players.map((player) => [player.id, buildPlayerStats(slots, player.id)])),
+    [players, slots],
+  )
 
   return (
     <div className="overflow-x-auto">
