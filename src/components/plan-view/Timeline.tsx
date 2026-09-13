@@ -62,81 +62,98 @@ function isBenchState(state: CellState) {
   return state === 'bench'
 }
 
-function buildPlayerStats(slots: TimeSlot[], playerId: string) {
-  let benchStints = 0
-  let minConsecutiveOnField = 0
-  let maxConsecutiveOnField = 0
-  let currentOnFieldRun = 0
-  let previousState: CellState | null = null
-  let subbedOffCount = 0
-  let subbedOnCount = 0
-  let previousMatchIndex: number | null = null
+interface PlayerStats {
+  benchStints: number
+  minConsecutiveOnField: number
+  maxConsecutiveOnField: number
+  subbedOffCount: number
+  subbedOnCount: number
+  totalSubEvents: number
+}
+
+interface MutablePlayerStats extends Omit<PlayerStats, 'totalSubEvents'> {
+  currentOnFieldRun: number
+  previousState: CellState | null
+  previousMatchIndex: number | null
+}
+
+function finalizeRun(stats: MutablePlayerStats) {
+  if (stats.currentOnFieldRun <= 0) return
+  if (stats.minConsecutiveOnField === 0 || stats.currentOnFieldRun < stats.minConsecutiveOnField) {
+    stats.minConsecutiveOnField = stats.currentOnFieldRun
+  }
+  if (stats.currentOnFieldRun > stats.maxConsecutiveOnField) {
+    stats.maxConsecutiveOnField = stats.currentOnFieldRun
+  }
+  stats.currentOnFieldRun = 0
+}
+
+function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
+  const playerStats = new Map<string, MutablePlayerStats>(
+    players.map((player) => [
+      player.id,
+      {
+        benchStints: 0,
+        minConsecutiveOnField: 0,
+        maxConsecutiveOnField: 0,
+        currentOnFieldRun: 0,
+        subbedOffCount: 0,
+        subbedOnCount: 0,
+        previousState: null,
+        previousMatchIndex: null,
+      },
+    ]),
+  )
 
   for (const slot of slots) {
-    const state = cellState(slot, playerId)
-    const onField = isOnFieldState(state)
-    const wasOnField = previousState ? isOnFieldState(previousState) : false
-    const wasBench = previousState ? isBenchState(previousState) : false
     const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
-    const sameMatch = previousState !== null && previousMatchIndex === slot.matchIndex
 
-    if (
-      previousState &&
-      previousMatchIndex !== null &&
-      previousMatchIndex !== slot.matchIndex &&
-      currentOnFieldRun > 0
-    ) {
-      if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
-        minConsecutiveOnField = currentOnFieldRun
+    for (const player of players) {
+      const stats = playerStats.get(player.id)
+      if (!stats) continue
+      const state = cellState(slot, player.id)
+      const onField = isOnFieldState(state)
+      const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
+      const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
+      const sameMatch = stats.previousState !== null && stats.previousMatchIndex === slot.matchIndex
+
+      if (!sameMatch) finalizeRun(stats)
+
+      if (isBenchState(state) && (!sameMatch || !wasBench)) {
+        stats.benchStints += 1
       }
-      if (currentOnFieldRun > maxConsecutiveOnField) {
-        maxConsecutiveOnField = currentOnFieldRun
+
+      if (onField) {
+        stats.currentOnFieldRun += slotMinutes
+      } else {
+        finalizeRun(stats)
       }
-      currentOnFieldRun = 0
-    }
 
-    if (isBenchState(state) && (!sameMatch || !wasBench)) {
-      benchStints += 1
-    }
-
-    if (onField) {
-      currentOnFieldRun += slotMinutes
-    } else if (currentOnFieldRun > 0) {
-      if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
-        minConsecutiveOnField = currentOnFieldRun
+      if (sameMatch) {
+        if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
+        if (wasBench && onField) stats.subbedOnCount += 1
       }
-      if (currentOnFieldRun > maxConsecutiveOnField) {
-        maxConsecutiveOnField = currentOnFieldRun
-      }
-      currentOnFieldRun = 0
-    }
 
-    if (sameMatch) {
-      if (wasOnField && isBenchState(state)) subbedOffCount += 1
-      if (isBenchState(previousState) && onField) subbedOnCount += 1
-    }
-
-    previousState = state
-    previousMatchIndex = slot.matchIndex
-  }
-
-  if (currentOnFieldRun > 0) {
-    if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
-      minConsecutiveOnField = currentOnFieldRun
-    }
-    if (currentOnFieldRun > maxConsecutiveOnField) {
-      maxConsecutiveOnField = currentOnFieldRun
+      stats.previousState = state
+      stats.previousMatchIndex = slot.matchIndex
     }
   }
 
-  return {
-    benchStints,
-    minConsecutiveOnField,
-    maxConsecutiveOnField,
-    subbedOffCount,
-    subbedOnCount,
-    totalSubEvents: subbedOffCount + subbedOnCount,
+  const result = new Map<string, PlayerStats>()
+  for (const player of players) {
+    const stats = playerStats.get(player.id)
+    if (!stats) continue
+    finalizeRun(stats)
+    result.set(player.id, {
+      benchStints: stats.benchStints,
+      minConsecutiveOnField: stats.minConsecutiveOnField,
+      maxConsecutiveOnField: stats.maxConsecutiveOnField,
+      subbedOffCount: stats.subbedOffCount,
+      subbedOnCount: stats.subbedOnCount,
+      totalSubEvents: stats.subbedOffCount + stats.subbedOnCount,
+    })
   }
+  return result
 }
 
 export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineProps) {
@@ -164,7 +181,7 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
     }
   })
   const playerStats = useMemo(
-    () => new Map(players.map((player) => [player.id, buildPlayerStats(slots, player.id)])),
+    () => buildPlayerStatsMap(slots, players),
     [players, slots],
   )
 
@@ -386,7 +403,13 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                 </td>
               )
             })}
-            <td colSpan={7} />
+            <td />
+            <td />
+            <td />
+            <td />
+            <td />
+            <td />
+            <td />
           </tr>
         </tfoot>
       </table>
