@@ -76,6 +76,9 @@ function buildPlayerStats(slots: TimeSlot[], playerId: string) {
     const state = cellState(slot, playerId)
     const onField = isOnFieldState(state)
     const wasOnField = previousState ? isOnFieldState(previousState) : false
+    const wasBench = previousState ? isBenchState(previousState) : false
+    const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
+    const sameMatch = previousState !== null && previousMatchIndex === slot.matchIndex
 
     if (
       previousState &&
@@ -92,17 +95,12 @@ function buildPlayerStats(slots: TimeSlot[], playerId: string) {
       currentOnFieldRun = 0
     }
 
-    if (
-      previousState &&
-      previousMatchIndex === slot.matchIndex &&
-      wasOnField &&
-      isBenchState(state)
-    ) {
+    if (isBenchState(state) && (!sameMatch || !wasBench)) {
       benchStints += 1
     }
 
     if (onField) {
-      currentOnFieldRun += 1
+      currentOnFieldRun += slotMinutes
     } else if (currentOnFieldRun > 0) {
       if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
         minConsecutiveOnField = currentOnFieldRun
@@ -113,7 +111,7 @@ function buildPlayerStats(slots: TimeSlot[], playerId: string) {
       currentOnFieldRun = 0
     }
 
-    if (previousState && previousMatchIndex === slot.matchIndex) {
+    if (sameMatch) {
       if (wasOnField && isBenchState(state)) subbedOffCount += 1
       if (isBenchState(previousState) && onField) subbedOnCount += 1
     }
@@ -212,15 +210,15 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
-              title="Min consecutive on-field stints"
-              aria-label="Minimum consecutive on-field stints"
+              title="Min consecutive on-field minutes"
+              aria-label="Minimum consecutive on-field minutes"
             >
               Min C
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
-              title="Max consecutive on-field stints"
-              aria-label="Maximum consecutive on-field stints"
+              title="Max consecutive on-field minutes"
+              aria-label="Maximum consecutive on-field minutes"
             >
               Max C
             </th>
@@ -353,10 +351,10 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.benchStints}</td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
-                  {stats.minConsecutiveOnField}
+                  {Math.round(stats.minConsecutiveOnField)}'
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
-                  {stats.maxConsecutiveOnField}
+                  {Math.round(stats.maxConsecutiveOnField)}'
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOffCount}</td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOnCount}</td>
