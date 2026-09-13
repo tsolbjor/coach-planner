@@ -17,8 +17,8 @@ const sections = [
       'For each segment, the planner picks who sits on the bench then fills the remaining field slots with eligible players.',
       'Bench priority leans on whoever has the most pitch time so far, with fewer bench appearances as a tiebreaker.',
       'With the default settings, the planner avoids back-to-back bench segments for the same player.',
-      'Period-start and period-end fairness: players who have already started or ended a period on the bench drop down the bench list at those boundaries.',
-      'Bench history resets between matches.',
+      'Players who finish a period or match on the bench are brought back onto the field at the next period or match start when possible.',
+      'Other bench history still resets between matches.',
     ],
   },
   {

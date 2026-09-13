@@ -89,6 +89,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
   let lastKeeperId: string | null = null
   let lastKeeperMatchIndex = -1
+  let mustPlayNextBoundary = new Set<string>()
 
   for (const [matchIndex, matchSegments] of segmentsByMatch.entries()) {
     matchSegments.sort((a, b) => a.segmentIndex - b.segmentIndex)
@@ -130,6 +131,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const active = players.filter((p) => !absentSet.has(p.id))
       const activeIds = new Set(active.map((p) => p.id))
       const segBenchSpots = Math.max(0, active.length - sportConfig.totalOnField)
+      const boundaryCarryOverFieldIds = isPeriodStart
+        ? new Set([...mustPlayNextBoundary].filter((id) => activeIds.has(id)))
+        : new Set<string>()
 
       let gkId: string | null = null
       let bench: string[]
@@ -161,7 +165,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       }
 
       if (isMidSegmentSwap && prevGkId && activeIds.has(prevGkId) && noPinOverride) {
-        preBenchForMidSwap = pickBench({ ...benchArgs, forcedFieldIds: new Set([prevGkId]) })
+        preBenchForMidSwap = pickBench({
+          ...benchArgs,
+          forcedFieldIds: new Set([prevGkId, ...boundaryCarryOverFieldIds]),
+        })
         const benchKeeperCandidates = preBenchForMidSwap
           .map((id) => playerById.get(id))
           .filter((p): p is Player => !!p && isKeeperEligible(p))
@@ -226,7 +233,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             .map((p) => p.id)
             .slice(0, segBenchSpots)
         } else {
-          bench = pickBench({ ...benchArgs, forcedFieldIds: gkId ? new Set([gkId]) : new Set() })
+          bench = pickBench({
+            ...benchArgs,
+            forcedFieldIds: new Set([...(gkId ? [gkId] : []), ...boundaryCarryOverFieldIds]),
+          })
         }
       }
 
@@ -243,6 +253,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         active,
         gkId,
         benchSpots: segBenchSpots,
+        forcedFieldIds: boundaryCarryOverFieldIds,
         stats,
         isBoundaryStart: isPeriodStart,
         isBoundaryEnd: isPeriodEnd,
@@ -261,6 +272,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           active,
           gkId,
           benchSpots: segBenchSpots,
+          forcedFieldIds: boundaryCarryOverFieldIds,
           stats,
           isBoundaryStart: isPeriodStart,
           isBoundaryEnd: isPeriodEnd,
@@ -338,6 +350,11 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
+      if (isPeriodEnd) {
+        mustPlayNextBoundary = new Set(bench)
+      } else if (isPeriodStart && mustPlayNextBoundary.size > 0) {
+        mustPlayNextBoundary = new Set()
+      }
       if (gkId) {
         lastKeeperId = gkId
         lastKeeperMatchIndex = matchIndex
@@ -582,6 +599,7 @@ function normalizeBench(args: {
   active: Player[]
   gkId: string | null
   benchSpots: number
+  forcedFieldIds: Set<string>
   stats: Map<string, PlayerStats>
   isBoundaryStart: boolean
   isBoundaryEnd: boolean
@@ -594,6 +612,7 @@ function normalizeBench(args: {
     active,
     gkId,
     benchSpots,
+    forcedFieldIds,
     stats,
     isBoundaryStart,
     isBoundaryEnd,
@@ -604,15 +623,23 @@ function normalizeBench(args: {
   const activeIds = new Set(active.map((p) => p.id))
   const nextBench: string[] = []
   const seen = new Set<string>()
+  const originalBenchLength = bench.length
 
   for (const id of bench) {
-    if (id === gkId || !activeIds.has(id) || seen.has(id)) continue
+    if (id === gkId || forcedFieldIds.has(id) || !activeIds.has(id) || seen.has(id)) continue
     seen.add(id)
     nextBench.push(id)
   }
 
+  if (hadExactBenchPin && nextBench.length < originalBenchLength) {
+    warnings.push({
+      kind: 'lock-conflict',
+      message: `Pin at ${segmentLabel} could not keep every requested bench player and was adjusted to preserve the lineup rules.`,
+    })
+  }
+
   if (nextBench.length > benchSpots) {
-    if (hadExactBenchPin) {
+    if (hadExactBenchPin && nextBench.length === originalBenchLength) {
       warnings.push({
         kind: 'lock-conflict',
         message: `Pin at ${segmentLabel} benches more active players than possible; trimmed to keep a full lineup.`,
@@ -629,9 +656,10 @@ function normalizeBench(args: {
       .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
     for (const p of fillCandidates) {
       if (nextBench.length >= benchSpots) break
-      nextBench.push(p.id)
-      seen.add(p.id)
-    }
+        if (forcedFieldIds.has(p.id)) continue
+        nextBench.push(p.id)
+        seen.add(p.id)
+      }
   }
 
   return nextBench

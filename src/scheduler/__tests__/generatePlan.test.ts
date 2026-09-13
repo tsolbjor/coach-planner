@@ -40,6 +40,23 @@ describe('generatePlan (integration)', () => {
     }
   })
 
+  it('players benched at period end return for the next period start even with loose bench caps', () => {
+    const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 10 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      maxBenchSegments: 3,
+    })
+    const periodOneEnd = result.slots.find((slot) => slot.periodIndex === 0 && slot.endMinute === 10)!
+    const periodTwoStart = result.slots.find((slot) => slot.periodIndex === 1 && slot.startMinute === 10)!
+    const nextOnField = new Set([...(periodTwoStart.gkId ? [periodTwoStart.gkId] : []), ...periodTwoStart.fieldIds])
+    for (const benchedId of periodOneEnd.benchIds) {
+      expect(nextOnField.has(benchedId)).toBe(true)
+    }
+  })
+
   it('5 players exactly fills field — warning + no bench', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const result = generatePlan({
@@ -82,6 +99,23 @@ describe('generatePlan (integration)', () => {
     const minutes = makePlayers(7).map((p) => pitchTime(result.slots, p.id))
     // ±2 segments across 3 matches with default (flexible) rotation settings.
     expect(Math.max(...minutes) - Math.min(...minutes)).toBeLessThanOrEqual(15)
+  })
+
+  it('players benched at match end return for the next match start even with loose bench caps', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 2,
+      maxBenchSegments: 3,
+    })
+    const matchOneEnd = result.slots.filter((slot) => slot.matchIndex === 0).at(-1)!
+    const matchTwoStart = result.slots.find((slot) => slot.matchIndex === 1 && slot.startMinute === 0)!
+    const nextOnField = new Set([...(matchTwoStart.gkId ? [matchTwoStart.gkId] : []), ...matchTwoStart.fieldIds])
+    for (const benchedId of matchOneEnd.benchIds) {
+      expect(nextOnField.has(benchedId)).toBe(true)
+    }
   })
 
   it('gk pin honoured at exact segment', () => {
