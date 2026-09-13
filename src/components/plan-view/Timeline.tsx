@@ -54,6 +54,67 @@ function preCellState(slot: TimeSlot, playerId: string): CellState {
   return 'unknown'
 }
 
+function isOnFieldState(state: CellState) {
+  return state === 'gk' || state === 'field'
+}
+
+function buildPlayerStats(slots: TimeSlot[], playerId: string) {
+  let benchStints = 0
+  let minConsecutiveOnField = 0
+  let maxConsecutiveOnField = 0
+  let currentOnFieldRun = 0
+  let previousState: CellState | null = null
+  let subbedOffCount = 0
+  let subbedOnCount = 0
+  let previousMatchIndex: number | null = null
+
+  for (const slot of slots) {
+    const state = cellState(slot, playerId)
+    const onField = isOnFieldState(state)
+    const wasOnField = previousState ? isOnFieldState(previousState) : false
+
+    if (previousState !== 'bench' && state === 'bench') benchStints += 1
+
+    if (onField) {
+      currentOnFieldRun += 1
+    } else if (currentOnFieldRun > 0) {
+      if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
+        minConsecutiveOnField = currentOnFieldRun
+      }
+      if (currentOnFieldRun > maxConsecutiveOnField) {
+        maxConsecutiveOnField = currentOnFieldRun
+      }
+      currentOnFieldRun = 0
+    }
+
+    if (previousState && previousMatchIndex === slot.matchIndex) {
+      if (wasOnField && state === 'bench') subbedOffCount += 1
+      if (previousState === 'bench' && onField) subbedOnCount += 1
+    }
+
+    previousState = state
+    previousMatchIndex = slot.matchIndex
+  }
+
+  if (currentOnFieldRun > 0) {
+    if (minConsecutiveOnField === 0 || currentOnFieldRun < minConsecutiveOnField) {
+      minConsecutiveOnField = currentOnFieldRun
+    }
+    if (currentOnFieldRun > maxConsecutiveOnField) {
+      maxConsecutiveOnField = currentOnFieldRun
+    }
+  }
+
+  return {
+    benchStints,
+    minConsecutiveOnField,
+    maxConsecutiveOnField,
+    subbedOffCount,
+    subbedOnCount,
+    totalSubEvents: subbedOffCount + subbedOnCount,
+  }
+}
+
 export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineProps) {
   const [hoverSeg, setHoverSeg] = useState<number | null>(null)
   if (slots.length === 0) return null
@@ -109,8 +170,44 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                 </th>
               )
             })}
-            <th className="rounded-tr-xl bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3.5rem]">
+            <th className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3.5rem]">
               Min
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Bench stints"
+            >
+              Bench
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Min consecutive on-field stints"
+            >
+              Min C
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Max consecutive on-field stints"
+            >
+              Max C
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Times subbed off"
+            >
+              Off
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Times subbed on"
+            >
+              On
+            </th>
+            <th
+              className="rounded-tr-xl bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Total substitutions (on + off)"
+            >
+              Subs
             </th>
           </tr>
           <tr>
@@ -136,12 +233,19 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
               )
             })}
             <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Min</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">B</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Min C</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Max C</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Off</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">On</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Subs</th>
           </tr>
         </thead>
         <tbody>
           {players.map((player) => {
             const mins = fieldMinutes.get(player.id) ?? 0
             const pct = totalMatchMinutes > 0 ? Math.round((mins / totalMatchMinutes) * 100) : 0
+            const stats = buildPlayerStats(slots, player.id)
             return (
               <tr key={player.id} className="border-t border-slate-200">
                 <td className="py-1.5 pr-3 font-medium text-slate-800 sticky left-0 bg-white z-10 truncate max-w-[8rem]">
@@ -204,6 +308,16 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                   {Math.round(mins)}'
                   <span className="block text-slate-400 font-normal">{pct}%</span>
                 </td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.benchStints}</td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
+                  {stats.minConsecutiveOnField}
+                </td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
+                  {stats.maxConsecutiveOnField}
+                </td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOffCount}</td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOnCount}</td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.totalSubEvents}</td>
               </tr>
             )
           })}
@@ -231,7 +345,7 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                 </td>
               )
             })}
-            <td />
+            <td colSpan={7} />
           </tr>
         </tfoot>
       </table>
