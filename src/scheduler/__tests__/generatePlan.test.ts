@@ -2,14 +2,10 @@ import { describe, it, expect } from 'vitest'
 import { generatePlan } from '..'
 import { makeFiveASide, makePlayers } from './fixtures'
 import type { Player, TimeSlot } from '../../types'
+import { getPlayerPitchMinutes, getPlayerPitchMinutesForSlot } from '../../utils/pitchTime'
 
 function pitchTime(slots: TimeSlot[], playerId: string): number {
-  let total = 0
-  for (const slot of slots) {
-    const onField = slot.gkId === playerId || slot.fieldIds.includes(playerId)
-    if (onField) total += slot.endMinute - slot.startMinute
-  }
-  return total
+  return getPlayerPitchMinutes(slots, playerId)
 }
 
 function benchCount(slots: TimeSlot[], playerId: string): number {
@@ -138,6 +134,22 @@ describe('generatePlan (integration)', () => {
     expect(result.warnings.map((w) => w.kind)).toContain('lock-conflict')
   })
 
+  it('bench pin plus absence trims bench to keep a full lineup', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      pins: { 0: { benchIds: ['p6', 'p7'], absentIds: ['p1'] } },
+    })
+    const slot = result.slots[0]!
+    const fieldTotal = (slot.gkId ? 1 : 0) + slot.fieldIds.length
+    expect(fieldTotal).toBe(sport.totalOnField)
+    expect(slot.benchIds).toHaveLength(1)
+    expect(result.warnings.map((w) => w.kind)).toContain('lock-conflict')
+  })
+
   it('player excluded from outfield positions still keeps pitch time via gk', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(7)
@@ -185,6 +197,26 @@ describe('generatePlan (integration)', () => {
       if (slot.gkId) minutes.set(slot.gkId, (minutes.get(slot.gkId) ?? 0) + slot.endMinute - slot.startMinute)
     }
     expect(Math.abs((minutes.get('p1') ?? 0) - (minutes.get('p2') ?? 0))).toBeLessThanOrEqual(20)
+  })
+
+  it('odd mid-segment keeper swap splits pitch time inside the swap segment', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(6),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      changeKeeperMidPeriod: true,
+    })
+    const swapSlot = result.slots.find((slot) => !!slot.midSwap)
+    expect(swapSlot?.midSwap).toBeTruthy()
+    const outgoing = swapSlot!.midSwap!.preGkId
+    const incoming = swapSlot!.gkId
+    expect(outgoing).toBeTruthy()
+    expect(incoming).toBeTruthy()
+    expect(outgoing).not.toBe(incoming)
+    expect(getPlayerPitchMinutesForSlot(swapSlot!, outgoing!)).toBe(2.5)
+    expect(getPlayerPitchMinutesForSlot(swapSlot!, incoming!)).toBe(2.5)
   })
 
   it('determinism: same input produces same shape', () => {
