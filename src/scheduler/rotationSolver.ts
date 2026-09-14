@@ -141,6 +141,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
       let gkId: string | null = null
       let bench: string[]
+      let pinnedFieldIds = new Set<string>()
       let preBenchForMidSwap: string[] | null = null
       let midPeriodSwapApplied: { incoming: string; outgoing: string } | null = null
       const keeperCmp = (a: Player, b: Player) => {
@@ -240,6 +241,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           bench.push(midPeriodSwapApplied.outgoing)
         } else if (pin.fieldIds) {
           const fieldSet = new Set(pin.fieldIds.filter((id) => activeIds.has(id)))
+          pinnedFieldIds = fieldSet
           bench = active
             .filter((p) => !fieldSet.has(p.id) && p.id !== gkId)
             .map((p) => p.id)
@@ -266,6 +268,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         gkId,
         benchSpots: segBenchSpots,
         forcedFieldIds: boundaryCarryOverFieldIds,
+        pinnedFieldIds,
         stats,
         isBoundaryStart: isPeriodStart,
         isBoundaryEnd: isPeriodEnd,
@@ -285,6 +288,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           gkId,
           benchSpots: segBenchSpots,
           forcedFieldIds: boundaryCarryOverFieldIds,
+          pinnedFieldIds,
           stats,
           isBoundaryStart: isPeriodStart,
           isBoundaryEnd: isPeriodEnd,
@@ -637,6 +641,7 @@ function normalizeBench(args: {
   gkId: string | null
   benchSpots: number
   forcedFieldIds: Set<string>
+  pinnedFieldIds: Set<string>
   stats: Map<string, PlayerStats>
   isBoundaryStart: boolean
   isBoundaryEnd: boolean
@@ -650,6 +655,7 @@ function normalizeBench(args: {
     gkId,
     benchSpots,
     forcedFieldIds,
+    pinnedFieldIds,
     stats,
     isBoundaryStart,
     isBoundaryEnd,
@@ -663,7 +669,13 @@ function normalizeBench(args: {
   const originalBenchLength = bench.length
 
   for (const id of bench) {
-    if (id === gkId || forcedFieldIds.has(id) || !activeIds.has(id) || seen.has(id)) continue
+    if (
+      id === gkId ||
+      forcedFieldIds.has(id) ||
+      pinnedFieldIds.has(id) ||
+      !activeIds.has(id) ||
+      seen.has(id)
+    ) continue
     seen.add(id)
     nextBench.push(id)
   }
@@ -693,7 +705,7 @@ function normalizeBench(args: {
       .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
     for (const p of fillCandidates) {
       if (nextBench.length >= benchSpots) break
-        if (forcedFieldIds.has(p.id)) continue
+        if (forcedFieldIds.has(p.id) || pinnedFieldIds.has(p.id)) continue
         nextBench.push(p.id)
         seen.add(p.id)
       }
@@ -701,7 +713,9 @@ function normalizeBench(args: {
 
   if (nextBench.length < benchSpots) {
     const forcedFill = active
-      .filter((p) => p.id !== gkId && !seen.has(p.id) && forcedFieldIds.has(p.id))
+      .filter(
+        (p) => p.id !== gkId && !seen.has(p.id) && forcedFieldIds.has(p.id) && !pinnedFieldIds.has(p.id),
+      )
       .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
     for (const p of forcedFill) {
       if (nextBench.length >= benchSpots) break
@@ -712,6 +726,26 @@ function normalizeBench(args: {
       warnings.push({
         kind: 'lock-conflict',
         message: `Pin at ${segmentLabel} relaxed a boundary carry-over preference to preserve exact on-field count.`,
+      })
+    }
+  }
+
+  if (nextBench.length < benchSpots) {
+    const relaxedPinFill = active
+      .filter((p) => p.id !== gkId && !seen.has(p.id))
+      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+    let usedPinnedField = false
+    for (const p of relaxedPinFill) {
+      if (nextBench.length >= benchSpots) break
+      if (forcedFieldIds.has(p.id)) continue
+      if (pinnedFieldIds.has(p.id)) usedPinnedField = true
+      nextBench.push(p.id)
+      seen.add(p.id)
+    }
+    if (usedPinnedField) {
+      warnings.push({
+        kind: 'lock-conflict',
+        message: `Pin at ${segmentLabel} relaxed a field pin to preserve exact on-field count.`,
       })
     }
   }

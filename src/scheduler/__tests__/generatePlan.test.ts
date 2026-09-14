@@ -339,7 +339,14 @@ describe('generatePlan (integration)', () => {
   })
 
   it('prefers subbing longest current on-field streak and protects recent returners', () => {
-    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 25 })
+    const baseSport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 25 })
+    const sport = {
+      ...baseSport,
+      hasKeeper: false,
+      totalOnField: 4,
+      positionTypes: baseSport.positionTypes.filter((positionType) => !positionType.isKeeper),
+      lineupSlots: baseSport.lineupSlots.filter((slot) => slot.slotId !== 'gk'),
+    }
     const result = generatePlan({
       sportConfig: sport,
       players: makePlayers(8),
@@ -363,8 +370,7 @@ describe('generatePlan (integration)', () => {
 
       const benchedStreaks = newlyBenched.map((id) => consecutiveOnFieldStreak(result.slots, i - 1, id))
       const stayedStreaks = stayedOnField.map((id) => consecutiveOnFieldStreak(result.slots, i - 1, id))
-      const avg = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
-      expect(avg(benchedStreaks)).toBeGreaterThanOrEqual(avg(stayedStreaks))
+      expect(Math.min(...benchedStreaks)).toBeGreaterThanOrEqual(Math.max(...stayedStreaks))
 
       if (i >= 2) {
         const twoBackBench = new Set(result.slots[i - 2]!.benchIds)
