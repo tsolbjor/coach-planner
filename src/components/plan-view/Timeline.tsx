@@ -73,18 +73,18 @@ interface PlayerStats {
 
 interface MutablePlayerStats extends Omit<PlayerStats, 'totalSubEvents'> {
   currentOnFieldRun: number
-  currentRunTouchesPlanStart: boolean
-  currentRunTouchesPlanEnd: boolean
+  currentRunTouchesMatchStart: boolean
+  currentRunTouchesMatchEnd: boolean
   previousState: CellState | null
   previousMatchIndex: number | null
 }
 
 function finalizeRun(stats: MutablePlayerStats) {
   if (stats.currentOnFieldRun <= 0) return
-  const touchesNoPlanEdge = !stats.currentRunTouchesPlanStart && !stats.currentRunTouchesPlanEnd
-  const touchesBothPlanEdges = stats.currentRunTouchesPlanStart && stats.currentRunTouchesPlanEnd
+  const touchesNoMatchEdge = !stats.currentRunTouchesMatchStart && !stats.currentRunTouchesMatchEnd
+  const touchesBothMatchEdges = stats.currentRunTouchesMatchStart && stats.currentRunTouchesMatchEnd
   if (
-    (touchesNoPlanEdge || touchesBothPlanEdges) &&
+    (touchesNoMatchEdge || touchesBothMatchEdges) &&
     stats.currentOnFieldRun < stats.minConsecutiveOnField
   ) {
     stats.minConsecutiveOnField = stats.currentOnFieldRun
@@ -93,8 +93,8 @@ function finalizeRun(stats: MutablePlayerStats) {
     stats.maxConsecutiveOnField = stats.currentOnFieldRun
   }
   stats.currentOnFieldRun = 0
-  stats.currentRunTouchesPlanStart = false
-  stats.currentRunTouchesPlanEnd = false
+  stats.currentRunTouchesMatchStart = false
+  stats.currentRunTouchesMatchEnd = false
 }
 
 export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
@@ -106,8 +106,8 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
         minConsecutiveOnField: Number.POSITIVE_INFINITY,
         maxConsecutiveOnField: 0,
         currentOnFieldRun: 0,
-        currentRunTouchesPlanStart: false,
-        currentRunTouchesPlanEnd: false,
+        currentRunTouchesMatchStart: false,
+        currentRunTouchesMatchEnd: false,
         subbedOffCount: 0,
         subbedOnCount: 0,
         previousState: null,
@@ -122,6 +122,8 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
     for (const player of players) {
       const stats = playerStats.get(player.id)
       if (!stats) continue
+      const prevSlot = slots[slotIndex - 1]
+      const nextSlot = slots[slotIndex + 1]
       const state = cellState(slot, player.id)
       const onField = isOnFieldState(state)
       const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
@@ -135,12 +137,15 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
       }
 
       if (onField) {
-        if (stats.currentOnFieldRun <= 0 && slotIndex === 0) {
-          stats.currentRunTouchesPlanStart = true
+        if (
+          stats.currentOnFieldRun <= 0 &&
+          (!prevSlot || prevSlot.matchIndex !== slot.matchIndex)
+        ) {
+          stats.currentRunTouchesMatchStart = true
         }
         stats.currentOnFieldRun += slotMinutes
-        if (slotIndex === slots.length - 1) {
-          stats.currentRunTouchesPlanEnd = true
+        if (!nextSlot || nextSlot.matchIndex !== slot.matchIndex) {
+          stats.currentRunTouchesMatchEnd = true
         }
       } else {
         finalizeRun(stats)

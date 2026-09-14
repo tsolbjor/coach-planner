@@ -7,7 +7,7 @@ const players: Player[] = [
   { id: 'p2', name: 'P2', level: 2, excludedPositionTypeIds: [] },
 ]
 
-function makeSlot(index: number, onFieldIds: string[]): TimeSlot {
+function makeSlot(index: number, onFieldIds: string[], overrides: Partial<TimeSlot> = {}): TimeSlot {
   const benchIds = players.map((p) => p.id).filter((id) => !onFieldIds.includes(id))
   return {
     id: `s${index + 1}`,
@@ -21,6 +21,7 @@ function makeSlot(index: number, onFieldIds: string[]): TimeSlot {
     absentIds: [],
     absentCreditedIds: [],
     positions: {},
+    ...overrides,
   }
 }
 
@@ -55,5 +56,20 @@ describe('buildPlayerStatsMap', () => {
     const stats = buildPlayerStatsMap(slots, players)
 
     expect(stats.get('p1')?.minConsecutiveOnField).toBe(15)
+  })
+
+  it('ignores inevitable match-edge runs in multi-match plans', () => {
+    const slots: TimeSlot[] = [
+      makeSlot(0, ['p1'], { matchIndex: 0 }),
+      makeSlot(1, ['p2'], { matchIndex: 0 }),
+      makeSlot(2, ['p1'], { matchIndex: 1 }),
+      makeSlot(3, ['p2'], { matchIndex: 1 }),
+      makeSlot(4, ['p1'], { matchIndex: 1 }),
+      makeSlot(5, ['p2'], { matchIndex: 1 }),
+    ]
+
+    const stats = buildPlayerStatsMap(slots, players)
+
+    expect(stats.get('p1')?.minConsecutiveOnField).toBe(5)
   })
 })
