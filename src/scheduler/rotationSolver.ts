@@ -506,7 +506,6 @@ function pickBench(args: PickBenchArgs): string[] {
   }).length
 
   const newBenchAddition: string[] = []
-  let usedKeeperRelaxation = false
   const tryAddCandidates = (
     candidates: Player[],
     opts: { respectL1Cap: boolean; respectKeeperCap: boolean },
@@ -520,9 +519,6 @@ function pickBench(args: PickBenchArgs): string[] {
         isKeeperEligible(p) &&
         totalKeeperEligible - keOnNewBench - 1 < 1
       ) continue
-      if (!opts.respectKeeperCap && isKeeperEligible(p) && totalKeeperEligible - keOnNewBench - 1 < 1) {
-        usedKeeperRelaxation = true
-      }
       newBenchAddition.push(p.id)
       if (isL1(p)) l1OnNewBench++
       if (isKeeperEligible(p)) keOnNewBench++
@@ -533,7 +529,7 @@ function pickBench(args: PickBenchArgs): string[] {
   tryAddCandidates(protectedRecentReturners, { respectL1Cap: true, respectKeeperCap: true })
   tryAddCandidates(preferredFieldCandidates, { respectL1Cap: true, respectKeeperCap: false })
   tryAddCandidates(protectedRecentReturners, { respectL1Cap: true, respectKeeperCap: false })
-  if (usedKeeperRelaxation) {
+  if (totalKeeperEligible - keOnNewBench < 1) {
     warnings.push({
       kind: 'keeper-unavailable',
       message: 'Bench picks would leave no keeper-eligible on field.',
