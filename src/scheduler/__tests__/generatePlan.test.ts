@@ -132,6 +132,26 @@ describe('generatePlan (integration)', () => {
     }
   })
 
+  it('keeps at least one bench change per segment when bench spots exist', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(7),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      maxBenchSegments: 4,
+      minSubsPerSegment: 0,
+      maxSubsPerSegment: 2,
+    })
+
+    for (let i = 1; i < result.slots.length; i++) {
+      const prevBench = new Set(result.slots[i - 1]!.benchIds)
+      const currBench = new Set(result.slots[i]!.benchIds)
+      const unchanged = result.slots[i]!.benchIds.filter((id) => prevBench.has(id)).length
+      expect(unchanged).toBeLessThan(currBench.size)
+    }
+  })
+
   it('gk pin honoured at exact segment', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players = makePlayers(7)
@@ -258,6 +278,24 @@ describe('generatePlan (integration)', () => {
       if (slot.gkId) minutes.set(slot.gkId, (minutes.get(slot.gkId) ?? 0) + slot.endMinute - slot.startMinute)
     }
     expect(Math.abs((minutes.get('p1') ?? 0) - (minutes.get('p2') ?? 0))).toBeLessThanOrEqual(20)
+  })
+
+  it('keeper tie-breaking carries across matches instead of resetting to id order', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 })
+    const players: Player[] = makePlayers(6)
+    for (let i = 2; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['gk']
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 10,
+      matchCount: 3,
+      pins: {
+        0: { gkId: 'p2' },
+        1: { gkId: 'p1' },
+      },
+    })
+
+    expect(result.slots[2]!.gkId).toBe('p2')
   })
 
   it('odd mid-segment keeper swap splits pitch time inside the swap segment', () => {

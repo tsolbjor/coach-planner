@@ -36,6 +36,20 @@ interface PlayerStats {
   consecutiveOnFieldSegments: number
 }
 
+function compareByFairnessOrder(
+  aId: string,
+  bId: string,
+  fairnessOrder: Map<string, number>,
+  rotationCursor: number,
+  totalPlayers: number,
+): number {
+  const aBase = fairnessOrder.get(aId) ?? 0
+  const bBase = fairnessOrder.get(bId) ?? 0
+  const aRank = (aBase - rotationCursor + totalPlayers) % totalPlayers
+  const bRank = (bBase - rotationCursor + totalPlayers) % totalPlayers
+  return aRank - bRank
+}
+
 export function solveRotation(input: RotationSolverInput): RotationSolverResult {
   const {
     sportConfig,
@@ -66,6 +80,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     keeperPositionTypeId === null || !(p.excludedPositionTypeIds ?? []).includes(keeperPositionTypeId)
   const isL1 = (p: Player) => normalizePlayerLevel(p.level) === 1
   const playerById = new Map(players.map((p) => [p.id, p]))
+  const fairnessOrder = new Map(players.map((p, index) => [p.id, index]))
 
   const stats = new Map<string, PlayerStats>()
   for (const p of players) {
@@ -90,17 +105,13 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
   }
 
   let lastKeeperId: string | null = null
-  let lastKeeperMatchIndex = -1
   let mustPlayNextBoundary = new Set<string>()
+  let rotationCursor = 0
 
-  for (const [matchIndex, matchSegments] of segmentsByMatch.entries()) {
+  for (const [, matchSegments] of segmentsByMatch.entries()) {
     matchSegments.sort((a, b) => a.segmentIndex - b.segmentIndex)
-    if (matchIndex !== lastKeeperMatchIndex) lastKeeperId = null
 
-    // Reset per-match recent-bench history (cap/A3 do not bridge matches).
-    for (const s of stats.values()) {
-      s.lastBenchedSeg = -Infinity
-    }
+    // Reset hard per-match bench caps, but preserve broader fairness signals.
     consecBenchCount.clear()
 
     const segsPerPeriod = new Map<number, Segment[]>()
@@ -148,7 +159,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         const ka = stats.get(a.id)?.keeperSegments ?? 0
         const kb = stats.get(b.id)?.keeperSegments ?? 0
         if (ka !== kb) return ka - kb
-        return a.id < b.id ? -1 : 1
+        return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, players.length)
       }
 
       const noPinOverride = pin.gkId === undefined && !pin.benchIds && !pin.fieldIds
@@ -166,6 +177,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         isBoundaryEnd: isPeriodEnd,
         isKeeperEligible,
         isL1,
+        fairnessOrder,
+        rotationCursor,
+        totalPlayers: players.length,
         warnings,
       }
 
@@ -225,7 +239,15 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         } else if (!newPeriod && prevGkId && activeIds.has(prevGkId)) {
           gkId = prevGkId
         } else if (keeperPositionTypeId) {
-          gkId = pickKeeper(active, stats, lastKeeperId, isKeeperEligible)
+          gkId = pickKeeper(
+            active,
+            stats,
+            lastKeeperId,
+            isKeeperEligible,
+            fairnessOrder,
+            rotationCursor,
+            players.length,
+          )
           if (!gkId) {
             warnings.push({
               kind: 'keeper-unavailable',
@@ -272,6 +294,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         stats,
         isBoundaryStart: isPeriodStart,
         isBoundaryEnd: isPeriodEnd,
+        fairnessOrder,
+        rotationCursor,
+        totalPlayers: players.length,
         warnings,
         segmentLabel: `match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}`,
         hadExactBenchPin: !!pin.benchIds,
@@ -292,6 +317,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           stats,
           isBoundaryStart: isPeriodStart,
           isBoundaryEnd: isPeriodEnd,
+          fairnessOrder,
+          rotationCursor,
+          totalPlayers: players.length,
           warnings,
           segmentLabel: `match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}`,
           hadExactBenchPin: !!pin.benchIds,
@@ -381,8 +409,8 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       }
       if (gkId) {
         lastKeeperId = gkId
-        lastKeeperMatchIndex = matchIndex
       }
+      rotationCursor = (rotationCursor + Math.max(1, segBenchSpots)) % players.length
     }
   }
 
@@ -394,6 +422,9 @@ function pickKeeper(
   stats: Map<string, PlayerStats>,
   lastKeeperId: string | null,
   isEligible: (p: Player) => boolean,
+  fairnessOrder: Map<string, number>,
+  rotationCursor: number,
+  totalPlayers: number,
 ): string | null {
   const eligible = players.filter(isEligible)
   if (eligible.length === 0) return null
@@ -404,7 +435,7 @@ function pickKeeper(
     const aWasLast = a.id === lastKeeperId ? 1 : 0
     const bWasLast = b.id === lastKeeperId ? 1 : 0
     if (aWasLast !== bWasLast) return aWasLast - bWasLast
-    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, totalPlayers)
   })
   return sorted[0]!.id
 }
@@ -423,6 +454,9 @@ interface PickBenchArgs {
   isKeeperEligible: (p: Player) => boolean
   isL1: (p: Player) => boolean
   forcedFieldIds: Set<string>
+  fairnessOrder: Map<string, number>
+  rotationCursor: number
+  totalPlayers: number
   warnings: SchedulerWarning[]
 }
 
@@ -441,6 +475,9 @@ function pickBench(args: PickBenchArgs): string[] {
     isKeeperEligible,
     isL1,
     forcedFieldIds,
+    fairnessOrder,
+    rotationCursor,
+    totalPlayers,
     warnings,
   } = args
 
@@ -448,10 +485,25 @@ function pickBench(args: PickBenchArgs): string[] {
 
   // First segment of match (no prev bench): fairness-only pick.
   if (prevBench.size === 0) {
-    return fairnessPick(active, benchSpots, forcedFieldIds, stats, isL1, isKeeperEligible, isBoundaryStart, isBoundaryEnd, warnings)
+    return fairnessPick(
+      active,
+      benchSpots,
+      forcedFieldIds,
+      stats,
+      isL1,
+      isKeeperEligible,
+      isBoundaryStart,
+      isBoundaryEnd,
+      fairnessOrder,
+      rotationCursor,
+      totalPlayers,
+      warnings,
+    )
   }
 
   const activeIds = new Set(active.map((p) => p.id))
+  const canRotateBench = [...prevBench].some((id) => !forcedFieldIds.has(id) && activeIds.has(id))
+  const canRotateField = active.some((p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id))
 
   // Capped: prev bench players whose consecutive-bench would exceed maxBenchSegments if benched again.
   const cappedOffBench = [...prevBench].filter((id) => {
@@ -462,13 +514,20 @@ function pickBench(args: PickBenchArgs): string[] {
 
   const maxSubsEff = Math.min(maxSubsPerSegment, benchSpots)
   const minSubsEff = Math.max(0, Math.min(minSubsPerSegment, maxSubsEff))
-  let targetSubs = Math.max(minSubsEff, cappedOffBench.length)
+  const proactiveMinSubs = canRotateBench && canRotateField ? 1 : 0
+  let targetSubs = Math.max(minSubsEff, cappedOffBench.length, proactiveMinSubs)
   if (cappedOffBench.length > maxSubsEff) {
     warnings.push({
       kind: 'bench-rotation-impossible',
       message: 'Max subs per segment too low to honour bench cap.',
     })
     targetSubs = cappedOffBench.length
+  }
+  if (proactiveMinSubs > maxSubsEff) {
+    warnings.push({
+      kind: 'bench-rotation-impossible',
+      message: 'Max subs per segment too low to sustain continuous rotation.',
+    })
   }
   targetSubs = Math.min(targetSubs, benchSpots)
 
@@ -487,7 +546,9 @@ function pickBench(args: PickBenchArgs): string[] {
   const fieldCandidates = active.filter(
     (p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id),
   )
-  fieldCandidates.sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+  fieldCandidates.sort((a, b) =>
+    compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd, fairnessOrder, rotationCursor, totalPlayers),
+  )
   const protectedRecentReturners = fieldCandidates.filter(
     (p) => (stats.get(p.id)?.consecutiveOnFieldSegments ?? 0) <= 1,
   )
@@ -561,10 +622,15 @@ function fairnessPick(
   isKeeperEligible: (p: Player) => boolean,
   isBoundaryStart: boolean,
   isBoundaryEnd: boolean,
+  fairnessOrder: Map<string, number>,
+  rotationCursor: number,
+  totalPlayers: number,
   warnings: SchedulerWarning[],
 ): string[] {
   const candidates = active.filter((p) => !forcedFieldIds.has(p.id))
-  const sorted = [...candidates].sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+  const sorted = [...candidates].sort((a, b) =>
+    compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd, fairnessOrder, rotationCursor, totalPlayers),
+  )
 
   const totalKE = active.filter(isKeeperEligible).length
   let keOnBench = 0
@@ -614,6 +680,9 @@ function compareForBench(
   stats: Map<string, PlayerStats>,
   isBoundaryStart: boolean,
   isBoundaryEnd: boolean,
+  fairnessOrder: Map<string, number>,
+  rotationCursor: number,
+  totalPlayers: number,
 ): number {
   const sa = stats.get(a.id)!
   const sb = stats.get(b.id)!
@@ -629,7 +698,7 @@ function compareForBench(
     return sa.periodEndBenchCount - sb.periodEndBenchCount
   }
   if (sa.lastBenchedSeg !== sb.lastBenchedSeg) return sa.lastBenchedSeg - sb.lastBenchedSeg
-  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+  return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, totalPlayers)
 }
 
 function normalizeBench(args: {
@@ -642,6 +711,9 @@ function normalizeBench(args: {
   stats: Map<string, PlayerStats>
   isBoundaryStart: boolean
   isBoundaryEnd: boolean
+  fairnessOrder: Map<string, number>
+  rotationCursor: number
+  totalPlayers: number
   warnings: SchedulerWarning[]
   segmentLabel: string
   hadExactBenchPin: boolean
@@ -656,6 +728,9 @@ function normalizeBench(args: {
     stats,
     isBoundaryStart,
     isBoundaryEnd,
+    fairnessOrder,
+    rotationCursor,
+    totalPlayers,
     warnings,
     segmentLabel,
     hadExactBenchPin,
@@ -699,7 +774,9 @@ function normalizeBench(args: {
   if (nextBench.length < benchSpots) {
     const fillCandidates = active
       .filter((p) => p.id !== gkId && !seen.has(p.id))
-      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+      .sort((a, b) =>
+        compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd, fairnessOrder, rotationCursor, totalPlayers),
+      )
     for (const p of fillCandidates) {
       if (nextBench.length >= benchSpots) break
         if (forcedFieldIds.has(p.id) || pinnedFieldIds.has(p.id)) continue
@@ -713,7 +790,9 @@ function normalizeBench(args: {
       .filter(
         (p) => p.id !== gkId && !seen.has(p.id) && forcedFieldIds.has(p.id) && !pinnedFieldIds.has(p.id),
       )
-      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+      .sort((a, b) =>
+        compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd, fairnessOrder, rotationCursor, totalPlayers),
+      )
     for (const p of forcedFill) {
       if (nextBench.length >= benchSpots) break
       nextBench.push(p.id)
@@ -730,7 +809,9 @@ function normalizeBench(args: {
   if (nextBench.length < benchSpots) {
     const relaxedPinFill = active
       .filter((p) => p.id !== gkId && !seen.has(p.id))
-      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+      .sort((a, b) =>
+        compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd, fairnessOrder, rotationCursor, totalPlayers),
+      )
     let usedPinnedField = false
     for (const p of relaxedPinFill) {
       if (nextBench.length >= benchSpots) break
