@@ -222,44 +222,44 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Bench stints"
-              aria-label="Bench stints"
             >
-              Bench
+              <span aria-hidden="true">Bench</span>
+              <span className="sr-only">Bench stints</span>
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Min consecutive on-field minutes"
-              aria-label="Minimum consecutive on-field minutes"
             >
-              Min C
+              <span aria-hidden="true">Min C</span>
+              <span className="sr-only">Minimum consecutive on-field minutes</span>
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Max consecutive on-field minutes"
-              aria-label="Maximum consecutive on-field minutes"
             >
-              Max C
+              <span aria-hidden="true">Max C</span>
+              <span className="sr-only">Maximum consecutive on-field minutes</span>
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Times subbed off"
-              aria-label="Times subbed off"
             >
-              Off
+              <span aria-hidden="true">Off</span>
+              <span className="sr-only">Times subbed off</span>
             </th>
             <th
               className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Times subbed on"
-              aria-label="Times subbed on"
             >
-              On
+              <span aria-hidden="true">On</span>
+              <span className="sr-only">Times subbed on</span>
             </th>
             <th
               className="rounded-tr-xl bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
               title="Total substitutions (on + off)"
-              aria-label="Total substitutions (on plus off)"
             >
-              Subs
+              <span aria-hidden="true">Subs</span>
+              <span className="sr-only">Total substitutions (on plus off)</span>
             </th>
           </tr>
           <tr>
@@ -285,12 +285,30 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
               )
             })}
             <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Min</th>
-            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">B</th>
-            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Min C</th>
-            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Max C</th>
-            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Off</th>
-            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">On</th>
-            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Subs</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">B</span>
+              <span className="sr-only">Bench stints</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Min C</span>
+              <span className="sr-only">Minimum consecutive on-field minutes</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Max C</span>
+              <span className="sr-only">Maximum consecutive on-field minutes</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Off</span>
+              <span className="sr-only">Times subbed off</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">On</span>
+              <span className="sr-only">Times subbed on</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Subs</span>
+              <span className="sr-only">Total substitutions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
