@@ -965,6 +965,7 @@ function ensureBenchContains(args: {
   }
 
   const wanted = requiredIds.filter((id) => activeIds.has(id) && !excludedIds.has(id))
+  const wantedSet = new Set(wanted)
   for (const id of wanted) {
     if (seen.has(id)) continue
     if (nextBench.length < benchSpots) {
@@ -972,7 +973,7 @@ function ensureBenchContains(args: {
       seen.add(id)
       continue
     }
-    const replaceIndex = nextBench.findIndex((existingId) => !wanted.includes(existingId))
+    const replaceIndex = nextBench.findIndex((existingId) => !wantedSet.has(existingId))
     if (replaceIndex === -1) continue
     seen.delete(nextBench[replaceIndex]!)
     nextBench[replaceIndex] = id
