@@ -298,6 +298,23 @@ describe('generatePlan (integration)', () => {
     expect(result.slots[2]!.gkId).toBe('p2')
   })
 
+  it('plans boundary keeper swaps through the previous bench and benches the outgoing keeper', () => {
+    const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 10 })
+    const players: Player[] = makePlayers(6)
+    for (let i = 2; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['gk']
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+    })
+
+    expect(result.slots[1]!.gkId).toBe('p1')
+    expect(result.slots[1]!.benchIds).toEqual(['p2'])
+    expect(result.slots[2]!.gkId).toBe('p2')
+    expect(result.slots[2]!.benchIds).toEqual(['p1'])
+  })
+
   it('odd mid-segment keeper swap splits pitch time inside the swap segment', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 })
     const result = generatePlan({
@@ -314,6 +331,8 @@ describe('generatePlan (integration)', () => {
     expect(outgoing).toBeTruthy()
     expect(incoming).toBeTruthy()
     expect(outgoing).not.toBe(incoming)
+    expect(swapSlot!.midSwap!.preBenchIds).toContain(incoming!)
+    expect(swapSlot!.benchIds).toContain(outgoing!)
     expect(getPlayerPitchMinutesForSlot(swapSlot!, outgoing!)).toBe(2.5)
     expect(getPlayerPitchMinutesForSlot(swapSlot!, incoming!)).toBe(2.5)
   })
