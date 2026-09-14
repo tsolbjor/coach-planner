@@ -355,7 +355,7 @@ describe('generatePlan (integration)', () => {
       const curr = result.slots[i]!
       if (curr.matchIndex !== prev.matchIndex) continue
 
-      const prevFieldCandidates = onFieldIds(prev).filter((id) => id !== prev.gkId)
+      const prevFieldCandidates = onFieldIds(prev)
       const currentlyBenched = new Set(curr.benchIds)
       const newlyBenched = prevFieldCandidates.filter((id) => currentlyBenched.has(id))
       const stayedOnField = prevFieldCandidates.filter((id) => !currentlyBenched.has(id))

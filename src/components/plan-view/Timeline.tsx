@@ -118,6 +118,7 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
       const state = cellState(slot, player.id)
       const onField = isOnFieldState(state)
       const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
+      const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
       const sameMatch = stats.previousState !== null && stats.previousMatchIndex === slot.matchIndex
 
       if (!sameMatch) finalizeRun(stats)
