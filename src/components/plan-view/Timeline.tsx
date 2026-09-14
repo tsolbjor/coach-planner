@@ -159,6 +159,10 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
 
 export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineProps) {
   const [hoverSeg, setHoverSeg] = useState<number | null>(null)
+  const playerStats = useMemo(
+    () => buildPlayerStatsMap(slots, players),
+    [players, slots],
+  )
   if (slots.length === 0) return null
 
   const fieldMinutes = new Map<string, number>()
@@ -181,10 +185,6 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
       on: [...nxt].filter((id) => !cur.has(id)),
     }
   })
-  const playerStats = useMemo(
-    () => buildPlayerStatsMap(slots, players),
-    [players, slots],
-  )
 
   return (
     <div className="overflow-x-auto">
