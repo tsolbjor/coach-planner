@@ -109,8 +109,15 @@ export function buildSwapPinUpdates(args: {
   if (!nextSlot || nextSlot.matchIndex !== slot.matchIndex || nextSlot.periodIndex !== slot.periodIndex) {
     return updates
   }
+  const nextPin = pins[segmentIndex + 1]
+  if ([
+    ...nextSlot.absentIds,
+    ...nextSlot.absentCreditedIds,
+    ...(nextPin?.absentIds ?? []),
+    ...(nextPin?.absentCreditedIds ?? []),
+  ].includes(subbedOffId)) return updates
 
-  updates[segmentIndex + 1] = keepPlayerBenched(pins[segmentIndex + 1], subbedOffId)
+  updates[segmentIndex + 1] = keepPlayerBenched(nextPin, subbedOffId)
   return updates
 }
 

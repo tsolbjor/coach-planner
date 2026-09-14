@@ -88,6 +88,36 @@ describe('buildSwapPinUpdates', () => {
     expect(updates[1]).toBeUndefined()
   })
 
+  it.each(['absentIds', 'absentCreditedIds'] as const)(
+    'does not replace a scheduled next-interval %s override with benching',
+    (absenceKey) => {
+      const pin: SegmentPin = { [absenceKey]: ['p2'], requiredBenchIds: ['p7'] }
+      const updates = buildSwapPinUpdates({
+        slots: [makeSlot(), makeSlot({ id: 's2', startMinute: 5, endMinute: 10 })],
+        pins: { 1: pin },
+        segmentIndex: 0,
+        selectedPlayerId: 'p2',
+        otherPlayerId: 'p6',
+        interactionMode: 'in-game',
+      })
+      expect(updates[0]).toEqual({ requiredFieldIds: ['p6'], requiredBenchIds: ['p2'] })
+      expect(updates[1]).toBeUndefined()
+      expect(pin).toEqual({ [absenceKey]: ['p2'], requiredBenchIds: ['p7'] })
+    },
+  )
+
+  it('does not override a future absence supplied by the generated interval', () => {
+    const updates = buildSwapPinUpdates({
+      slots: [makeSlot(), makeSlot({ id: 's2', startMinute: 5, endMinute: 10, absentIds: ['p2'] })],
+      pins: {},
+      segmentIndex: 0,
+      selectedPlayerId: 'p2',
+      otherPlayerId: 'p6',
+      interactionMode: 'in-game',
+    })
+    expect(updates[1]).toBeUndefined()
+  })
+
   it('merges with an existing next-segment pin', () => {
     const slots = [makeSlot(), makeSlot({ id: 's2', startMinute: 5, endMinute: 10 })]
     const pins: Record<number, SegmentPin> = {
