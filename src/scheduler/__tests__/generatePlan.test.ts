@@ -355,6 +355,28 @@ describe('generatePlan (integration)', () => {
     expect(getPlayerPitchMinutesForSlot(swapSlot!, incoming!)).toBe(2.5)
   })
 
+  it('pinned keeper on odd mid-swap segment is prepared from bench before entering', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(6),
+      benchStintMinutes: 4,
+      matchCount: 1,
+      changeKeeperMidPeriod: true,
+      pins: {
+        1: { gkId: 'p1' },
+        2: { gkId: 'p6' },
+      },
+    })
+
+    const slot = result.slots[2]!
+    expect(slot.gkId).toBe('p6')
+    expect(slot.midSwap).toBeTruthy()
+    expect(slot.midSwap!.preBenchIds).toContain('p6')
+    expect(slot.midSwap!.preGkId).toBe('p1')
+    expect(slot.benchIds).toContain('p1')
+  })
+
   it('warns when a requested keeper mid-period swap cannot happen', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(6)

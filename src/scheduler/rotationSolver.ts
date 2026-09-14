@@ -201,27 +201,68 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         warnings,
       }
 
-      if (isMidSegmentSwap && prevGkId && activeIds.has(prevGkId) && noPinOverride) {
+      const pinnedMidSwapKeeperCandidate =
+        isMidSegmentSwap &&
+        prevGkId &&
+        activeIds.has(prevGkId) &&
+        !pin.benchIds &&
+        !pin.fieldIds &&
+        pin.gkId &&
+        pin.gkId !== prevGkId &&
+        activeIds.has(pin.gkId) &&
+        isKeeperEligible(playerById.get(pin.gkId) ?? ({} as Player))
+          ? pin.gkId
+          : null
+
+      if (
+        isMidSegmentSwap &&
+        prevGkId &&
+        activeIds.has(prevGkId) &&
+        (noPinOverride || pinnedMidSwapKeeperCandidate)
+      ) {
         preBenchForMidSwap = pickBench({
           ...benchArgs,
           forcedFieldIds: new Set([prevGkId, ...boundaryCarryOverFieldIds]),
         })
-        const benchKeeperCandidates = preBenchForMidSwap
-          .map((id) => playerById.get(id))
-          .filter((p): p is Player => !!p && isKeeperEligible(p))
-          .sort(keeperCmp)
-        if (benchKeeperCandidates.length > 0) {
-          gkId = benchKeeperCandidates[0]!.id
-          midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
-          bench = preBenchForMidSwap.filter((id) => id !== gkId)
-          bench.push(prevGkId)
-        } else {
-          gkId = prevGkId
-          bench = preBenchForMidSwap
-          warnings.push({
-            kind: 'keeper-unavailable',
-            message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+        if (pinnedMidSwapKeeperCandidate) {
+          preBenchForMidSwap = ensureBenchContains({
+            bench: preBenchForMidSwap,
+            requiredIds: [pinnedMidSwapKeeperCandidate],
+            benchSpots: segBenchSpots,
+            activeIds,
+            excludedIds: new Set([prevGkId]),
           })
+          if (preBenchForMidSwap.includes(pinnedMidSwapKeeperCandidate)) {
+            gkId = pinnedMidSwapKeeperCandidate
+            midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
+            bench = preBenchForMidSwap.filter((id) => id !== gkId)
+            bench.push(prevGkId)
+          } else {
+            gkId = prevGkId
+            bench = preBenchForMidSwap
+            warnings.push({
+              kind: 'lock-conflict',
+              message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} could not prepare the pinned keeper on bench for a mid-segment swap.`,
+            })
+          }
+        } else {
+          const benchKeeperCandidates = preBenchForMidSwap
+            .map((id) => playerById.get(id))
+            .filter((p): p is Player => !!p && isKeeperEligible(p))
+            .sort(keeperCmp)
+          if (benchKeeperCandidates.length > 0) {
+            gkId = benchKeeperCandidates[0]!.id
+            midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
+            bench = preBenchForMidSwap.filter((id) => id !== gkId)
+            bench.push(prevGkId)
+          } else {
+            gkId = prevGkId
+            bench = preBenchForMidSwap
+            warnings.push({
+              kind: 'keeper-unavailable',
+              message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+            })
+          }
         }
       } else {
         if (pin.gkId !== undefined) {
