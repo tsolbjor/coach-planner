@@ -24,10 +24,11 @@ const sections = [
     points: [
       'The match is split into segments based on "Minutes on bench". A 40-min match with 5-min stints becomes 8 segments.',
       'For each segment, the planner picks who sits on the bench then fills the remaining field slots with eligible players.',
-      'Bench priority leans on whoever has the most pitch time so far, with fewer bench appearances as a tiebreaker.',
+      'Bench priority starts with the longest current on-field streak, then leans on whoever has the most pitch time so far, with fewer bench appearances as a later tiebreaker.',
+      'When bench spots exist, the planner tries to keep the rotation moving every segment so the same bench group does not stay parked unless the settings force it.',
       'With the default settings, the planner avoids back-to-back bench segments for the same player.',
       'Players who finish a period or match on the bench are brought back onto the field at the next period or match start when possible.',
-      'Other bench history still resets between matches.',
+      'Hard bench caps still reset between matches, but broader fairness signals carry forward so new matches do not restart from a blank slate.',
     ],
   },
   {
@@ -53,7 +54,7 @@ const sections = [
       'One keeper is designated per period. The bench picker keeps that keeper on the field for the whole period.',
       'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period when a bench keeper is available.',
       'For odd-segment periods, the swap happens in the middle of the swap segment so the new keeper gets half-segment prep on the bench first.',
-      'The planner picks each period\'s keeper from players whose GK chip is still selected, preferring whoever has accumulated the fewest keeper segments.',
+      'The planner picks each period\'s keeper from players whose GK chip is still selected, preferring whoever has accumulated the fewest keeper segments and avoiding repeat ties when possible.',
     ],
   },
   {

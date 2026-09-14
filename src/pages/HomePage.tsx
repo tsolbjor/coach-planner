@@ -202,6 +202,9 @@ function CreatePlanModal({
             max={Math.max(1, benchSize)}
             onChange={setMaxSubsPerSegment}
           />
+          <p className="text-xs text-slate-500">
+            The planner keeps the rotation moving when possible, while still preserving exact lineup counts.
+          </p>
           <label className="flex items-start gap-3 cursor-pointer pt-1">
             <input
               type="checkbox"
@@ -211,7 +214,9 @@ function CreatePlanModal({
             />
             <div>
               <p className="text-sm font-medium text-slate-700">Change keeper mid-period</p>
-              <p className="text-xs text-slate-500">Swap keeper with a benched player midway through each period.</p>
+              <p className="text-xs text-slate-500">
+                Swap keeper with a benched player midway through each period, while still spreading keeper turns across the full plan.
+              </p>
             </div>
           </label>
           <p className="text-xs text-slate-500">{benchSize} on bench.</p>
