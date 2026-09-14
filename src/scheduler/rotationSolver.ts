@@ -107,6 +107,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
   let lastKeeperId: string | null = null
   let mustPlayNextBoundary = new Set<string>()
+  let mustBenchNextBoundary = new Set<string>()
   let rotationCursor = 0
 
   for (const [, matchSegments] of segmentsByMatch.entries()) {
@@ -114,6 +115,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
     // Reset hard per-match bench caps, but preserve broader fairness signals.
     consecBenchCount.clear()
+    mustBenchNextBoundary = new Set()
 
     const segsPerPeriod = new Map<number, Segment[]>()
     for (const s of matchSegments) {
@@ -149,6 +151,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const active = players.filter((p) => !absentSet.has(p.id))
       const activeIds = new Set(active.map((p) => p.id))
       const segBenchSpots = Math.max(0, active.length - sportConfig.totalOnField)
+      const boundaryBenchCarryOverIds = new Set(
+        [...mustBenchNextBoundary].filter((id) => activeIds.has(id)),
+      )
       const boundaryCarryOverFieldIds = isPeriodStart
         ? new Set([...mustPlayNextBoundary].filter((id) => activeIds.has(id)))
         : new Set<string>()
@@ -312,6 +317,16 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         })
       }
 
+      if (boundaryBenchCarryOverIds.size > 0) {
+        bench = ensureBenchContains({
+          bench,
+          requiredIds: [...boundaryBenchCarryOverIds],
+          benchSpots: segBenchSpots,
+          activeIds,
+          excludedIds: new Set(gkId ? [gkId] : []),
+        })
+      }
+
       if (prevGkId && gkId && prevGkId !== gkId && activeIds.has(prevGkId)) {
         bench = ensureBenchContains({
           bench,
@@ -448,6 +463,8 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
+      mustBenchNextBoundary =
+        plannedNextBoundaryKeeperId && gkId ? new Set([gkId]) : new Set<string>()
       if (isPeriodEnd || isMatchEnd) {
         mustPlayNextBoundary = new Set(bench)
       } else if (isPeriodStart && mustPlayNextBoundary.size > 0) {
