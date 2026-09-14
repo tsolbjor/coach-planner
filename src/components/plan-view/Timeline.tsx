@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { Player, SportConfig, TimeSlot } from '../../types'
 import { getSlotPitchMinutesByPlayer } from '../../utils/pitchTime'
+import { getBoundaryTransition } from '../../utils/slotTransitions'
 
 interface TimelineProps {
   slots: TimeSlot[]
@@ -97,6 +98,18 @@ function finalizeRun(stats: MutablePlayerStats) {
   stats.currentRunTouchesMatchEnd = false
 }
 
+function slotPhases(slot: TimeSlot) {
+  const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
+  if (!slot.midSwap) return [{ matchIndex: slot.matchIndex, duration: slotMinutes, phase: 'post' as const }]
+
+  const preDuration = Math.max(0, Math.min(slotMinutes, slot.midSwap.atMinute - slot.startMinute))
+  const postDuration = Math.max(0, slotMinutes - preDuration)
+  return [
+    { matchIndex: slot.matchIndex, duration: preDuration, phase: 'pre' as const },
+    { matchIndex: slot.matchIndex, duration: postDuration, phase: 'post' as const },
+  ].filter((entry) => entry.duration > 0)
+}
+
 export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
   const playerStats = new Map<string, MutablePlayerStats>(
     players.map((player) => [
@@ -117,50 +130,60 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
   )
 
   for (const [slotIndex, slot] of slots.entries()) {
-    const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
     const prevSlot = slots[slotIndex - 1]
     const nextSlot = slots[slotIndex + 1]
+    const phases = slotPhases(slot)
 
-    for (const player of players) {
-      const stats = playerStats.get(player.id)
-      if (!stats) continue
-      const state = cellState(slot, player.id)
-      const onField = isOnFieldState(state)
-      const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
-      const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
-      const sameMatch = stats.previousState !== null && stats.previousMatchIndex === slot.matchIndex
+    for (const [phaseIndex, phaseEntry] of phases.entries()) {
+      const isFirstPhase = phaseIndex === 0
+      const isLastPhase = phaseIndex === phases.length - 1
+      const prevMatchIndex = !isFirstPhase
+        ? phaseEntry.matchIndex
+        : prevSlot?.matchIndex ?? null
+      const nextMatchIndex = !isLastPhase
+        ? phaseEntry.matchIndex
+        : nextSlot?.matchIndex ?? null
 
-      if (!sameMatch) {
-        if (stats.currentOnFieldRun > 0) stats.currentRunTouchesMatchEnd = true
-        finalizeRun(stats)
-      }
+      for (const player of players) {
+        const stats = playerStats.get(player.id)
+        if (!stats) continue
+        const state =
+          phaseEntry.phase === 'pre' ? preCellState(slot, player.id) : cellState(slot, player.id)
+        const onField = isOnFieldState(state)
+        const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
+        const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
+        const sameMatch =
+          stats.previousState !== null && stats.previousMatchIndex === phaseEntry.matchIndex
 
-      if (isBenchState(state) && (!sameMatch || !wasBench)) {
-        stats.benchStints += 1
-      }
-
-      if (onField) {
-        if (
-          stats.currentOnFieldRun <= 0 &&
-          (!prevSlot || prevSlot.matchIndex !== slot.matchIndex)
-        ) {
-          stats.currentRunTouchesMatchStart = true
+        if (!sameMatch) {
+          if (stats.currentOnFieldRun > 0) stats.currentRunTouchesMatchEnd = true
+          finalizeRun(stats)
         }
-        stats.currentOnFieldRun += slotMinutes
-        if (!nextSlot || nextSlot.matchIndex !== slot.matchIndex) {
-          stats.currentRunTouchesMatchEnd = true
+
+        if (isBenchState(state) && (!sameMatch || !wasBench)) {
+          stats.benchStints += 1
         }
-      } else {
-        finalizeRun(stats)
-      }
 
-      if (sameMatch) {
-        if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
-        if (wasBench && onField) stats.subbedOnCount += 1
-      }
+        if (onField) {
+          if (stats.currentOnFieldRun <= 0 && prevMatchIndex !== phaseEntry.matchIndex) {
+            stats.currentRunTouchesMatchStart = true
+          }
+          stats.currentOnFieldRun += phaseEntry.duration
+          if (nextMatchIndex !== phaseEntry.matchIndex) {
+            stats.currentRunTouchesMatchEnd = true
+          }
+        } else {
+          finalizeRun(stats)
+        }
 
-      stats.previousState = state
-      stats.previousMatchIndex = slot.matchIndex
+        if (sameMatch) {
+          if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
+          if (wasBench && onField) stats.subbedOnCount += 1
+        }
+
+        stats.previousState = state
+        stats.previousMatchIndex = phaseEntry.matchIndex
+      }
     }
   }
 
@@ -201,14 +224,7 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
 
   // Compute next-rotation deltas per segment
   const deltas: { off: string[]; on: string[] }[] = slots.map((slot, i) => {
-    const next = slots[i + 1]
-    if (!next || next.matchIndex !== slot.matchIndex) return { off: [], on: [] }
-    const cur = new Set([...(slot.gkId ? [slot.gkId] : []), ...slot.fieldIds])
-    const nxt = new Set([...(next.gkId ? [next.gkId] : []), ...next.fieldIds])
-    return {
-      off: [...cur].filter((id) => !nxt.has(id)),
-      on: [...nxt].filter((id) => !cur.has(id)),
-    }
+    return getBoundaryTransition(slot, slots[i + 1])
   })
 
   return (
