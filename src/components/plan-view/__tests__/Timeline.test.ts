@@ -41,11 +41,19 @@ describe('buildPlayerStatsMap', () => {
     expect(stats.get('p2')?.minConsecutiveOnField).toBe(5)
   })
 
-  it('returns 0 when only inevitable runs exist', () => {
-    const slots: TimeSlot[] = [makeSlot(0, ['p1']), makeSlot(1, ['p1'])]
+  it('returns 0 when every run touches exactly one plan edge', () => {
+    const slots: TimeSlot[] = [makeSlot(0, ['p1']), makeSlot(1, ['p2']), makeSlot(2, ['p1'])]
 
     const stats = buildPlayerStatsMap(slots, players)
 
     expect(stats.get('p1')?.minConsecutiveOnField).toBe(0)
+  })
+
+  it('keeps full-plan runs in Min C', () => {
+    const slots: TimeSlot[] = [makeSlot(0, ['p1']), makeSlot(1, ['p1']), makeSlot(2, ['p1'])]
+
+    const stats = buildPlayerStatsMap(slots, players)
+
+    expect(stats.get('p1')?.minConsecutiveOnField).toBe(15)
   })
 })

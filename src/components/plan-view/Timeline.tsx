@@ -82,8 +82,7 @@ interface MutablePlayerStats extends Omit<PlayerStats, 'totalSubEvents'> {
 function finalizeRun(stats: MutablePlayerStats) {
   if (stats.currentOnFieldRun <= 0) return
   if (
-    !stats.currentRunTouchesPlanStart &&
-    !stats.currentRunTouchesPlanEnd &&
+    stats.currentRunTouchesPlanStart === stats.currentRunTouchesPlanEnd &&
     stats.currentOnFieldRun < stats.minConsecutiveOnField
   ) {
     stats.minConsecutiveOnField = stats.currentOnFieldRun
