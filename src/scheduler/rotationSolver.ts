@@ -399,6 +399,27 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         for (const id of bench) benchSet.add(id)
       }
 
+      if (plannedNextBoundaryKeeperId && plannedNextBoundaryKeeperId !== gkId && !benchSet.has(plannedNextBoundaryKeeperId)) {
+        const enforcedBench = ensureBenchContains({
+          bench,
+          requiredIds: [plannedNextBoundaryKeeperId],
+          benchSpots: segBenchSpots,
+          activeIds,
+          excludedIds: new Set(gkId ? [gkId] : []),
+        })
+        if (enforcedBench.length !== bench.length || enforcedBench.some((id, i) => id !== bench[i])) {
+          if (pinnedFieldIds.has(plannedNextBoundaryKeeperId)) {
+            warnings.push({
+              kind: 'lock-conflict',
+              message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} was relaxed to keep the planned incoming keeper on bench.`,
+            })
+          }
+          bench = enforcedBench
+          benchSet.clear()
+          for (const id of bench) benchSet.add(id)
+        }
+      }
+
       const field = active.filter((p) => p.id !== gkId && !benchSet.has(p.id)).map((p) => p.id)
 
       if (isMidSegmentSwap && midPeriodSwapApplied && preBenchForMidSwap) {
