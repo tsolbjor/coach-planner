@@ -463,8 +463,11 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
-      mustBenchNextBoundary =
-        plannedNextBoundaryKeeperId && gkId ? new Set([gkId]) : new Set<string>()
+      if (plannedNextBoundaryKeeperId && gkId) {
+        mustBenchNextBoundary = new Set([gkId])
+      } else if (boundaryBenchCarryOverIds.size > 0) {
+        mustBenchNextBoundary = new Set()
+      }
       if (isPeriodEnd || isMatchEnd) {
         mustPlayNextBoundary = new Set(bench)
       } else if (isPeriodStart && mustPlayNextBoundary.size > 0) {
