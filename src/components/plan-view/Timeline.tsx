@@ -79,7 +79,7 @@ interface MutablePlayerStats extends Omit<PlayerStats, 'totalSubEvents'> {
 
 function finalizeRun(stats: MutablePlayerStats) {
   if (stats.currentOnFieldRun <= 0) return
-  if (stats.minConsecutiveOnField === 0 || stats.currentOnFieldRun < stats.minConsecutiveOnField) {
+  if (stats.currentOnFieldRun < stats.minConsecutiveOnField) {
     stats.minConsecutiveOnField = stats.currentOnFieldRun
   }
   if (stats.currentOnFieldRun > stats.maxConsecutiveOnField) {
@@ -94,7 +94,7 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
       player.id,
       {
         benchStints: 0,
-        minConsecutiveOnField: 0,
+        minConsecutiveOnField: Number.POSITIVE_INFINITY,
         maxConsecutiveOnField: 0,
         currentOnFieldRun: 0,
         subbedOffCount: 0,
@@ -146,7 +146,8 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
     finalizeRun(stats)
     result.set(player.id, {
       benchStints: stats.benchStints,
-      minConsecutiveOnField: stats.minConsecutiveOnField,
+      minConsecutiveOnField:
+        stats.minConsecutiveOnField === Number.POSITIVE_INFINITY ? 0 : stats.minConsecutiveOnField,
       maxConsecutiveOnField: stats.maxConsecutiveOnField,
       subbedOffCount: stats.subbedOffCount,
       subbedOnCount: stats.subbedOnCount,

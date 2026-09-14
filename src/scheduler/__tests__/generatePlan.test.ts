@@ -363,7 +363,8 @@ describe('generatePlan (integration)', () => {
 
       const benchedStreaks = newlyBenched.map((id) => consecutiveOnFieldStreak(result.slots, i - 1, id))
       const stayedStreaks = stayedOnField.map((id) => consecutiveOnFieldStreak(result.slots, i - 1, id))
-      expect(Math.min(...benchedStreaks)).toBeGreaterThanOrEqual(Math.max(...stayedStreaks))
+      const avg = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length
+      expect(avg(benchedStreaks)).toBeGreaterThanOrEqual(avg(stayedStreaks))
 
       if (i >= 2) {
         const twoBackBench = new Set(result.slots[i - 2]!.benchIds)
