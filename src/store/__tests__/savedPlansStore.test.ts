@@ -104,6 +104,35 @@ describe('saved plan generation ownership', () => {
 })
 
 describe('completed play and structural setup', () => {
+  it('applies roster-level absence only to future play without invalidating historical participants', () => {
+    const plan = useSavedPlansStore.getState().createMatch(base())
+    const store = useSavedPlansStore.getState()
+    const playerId = plan.slots[0]!.gkId!
+    store.setSegmentPins(plan.id, { 2: { requiredFieldIds: [playerId] } }, 2)
+    const history = current(plan.id).lockedSlots!
+    store.updateMatch(plan.id, { absentPlayerIds: [playerId] })
+    const absent = current(plan.id)
+    expect(absent.slots).toHaveLength(plan.slots.length)
+    expect(absent.slots.slice(0, 2)).toEqual(history)
+    expect(absent.slots.slice(2).every((s) => s.absentIds.includes(playerId) &&
+      s.gkId !== playerId && !s.fieldIds.includes(playerId) && !s.benchIds.includes(playerId))).toBe(true)
+    expect(absent.warnings?.some((w) => w.kind === 'invalid-input')).toBe(false)
+    expect(absent.pins[2]).toEqual({ requiredFieldIds: [playerId] })
+    store.updateMatch(plan.id, { absentPlayerIds: [] })
+    expect(current(plan.id).slots.slice(0, 2)).toEqual(history)
+    expect(current(plan.id).slots[2]!.fieldIds).toContain(playerId)
+    expect(current(plan.id).slots.slice(2).every((s) => !s.absentIds.includes(playerId))).toBe(true)
+  })
+
+  it('rejects saving a roster that removes a historical participant', () => {
+    const plan = useSavedPlansStore.getState().createMatch(base())
+    const store = useSavedPlansStore.getState()
+    store.setSegmentPins(plan.id, { 2: { gkId: plan.slots[2]!.gkId } }, 2)
+    const locked = current(plan.id)
+    store.saveMatch({ ...locked, roster: locked.roster.slice(1) })
+    expect(current(plan.id)).toEqual(locked)
+  })
+
   it('locks earlier intervals on live edit and replays them on every later generation and hydrate', async () => {
     const plan = useSavedPlansStore.getState().createMatch(base())
     const prefix = plan.slots.slice(0, 2)

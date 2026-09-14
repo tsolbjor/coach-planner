@@ -136,6 +136,20 @@ describe('combined scheduling constraints', () => {
       expect(result.warnings.some(w => w.kind === 'l1-cap-infeasible' && w.message.includes(`segment ${i + 1}`))).toBe(true)
     }
   })
+
+  it('never creates a phantom occupant when an empty keeper pin meets a shortage', () => {
+    const input = { ...standard(), players: makePlayers(4), pins: { 0: { gkId: null } } }
+    const result = generatePlan(input)
+    const slot = result.slots[0]!
+    expect(slot.gkId).toBeNull()
+    expect(slot.fieldIds).toHaveLength(4)
+    expect(slot.benchIds).toEqual([])
+    expect(Object.values(slot.positions).filter(Boolean)).toHaveLength(4)
+    expect(result.warnings.some(w => w.kind === 'keeper-unavailable' && w.message.includes('segment 1'))).toBe(true)
+    const full = generatePlan({ ...input, players: makePlayers(8) })
+    expect(full.slots[0]!.fieldIds.length + Number(!!full.slots[0]!.gkId)).toBe(5)
+    expect(full.warnings.some(w => w.kind === 'lock-conflict')).toBe(true)
+  })
 })
 
 describe('canonical midpoint intervals', () => {
@@ -183,6 +197,17 @@ describe('canonical midpoint intervals', () => {
     expect(segments[1]!.endMinute).toBe(10)
     expect(segments[2]!.regularSubstitution).toBe(false)
     expect(segments.every(s => s.substitutionMinutes === 20 / 3)).toBe(true)
+  })
+
+  it('still splits a single original interval when no alternative keeper is eligible', () => {
+    const input = { ...standard(), benchStintMinutes: 20, changeKeeperMidPeriod: true }
+    input.players.slice(1).forEach(p => { p.excludedPositionTypeIds = ['gk'] })
+    const result = generatePlan(input)
+    expectValid(result, input)
+    expect(result.slots.map(s => [s.startMinute, s.endMinute])).toEqual([[0, 10], [10, 20]])
+    expect(result.slots.map(s => s.gkId)).toEqual(['p1', 'p1'])
+    expect(result.warnings.some(w => w.message.includes('Keeper mid-period swap skipped') &&
+      w.message.includes('segment 2'))).toBe(true)
   })
 })
 
@@ -240,6 +265,17 @@ describe('immutable historical intervals', () => {
     expect(result.slots.slice(3).every(s => s.gkId !== departedId &&
       !s.fieldIds.includes(departedId!) && !s.benchIds.includes(departedId!))).toBe(true)
     expect(result.warnings.some(w => w.kind === 'invalid-input')).toBe(false)
+  })
+
+  it('carries exact historical positions forward rather than regenerating their overlay', () => {
+    const input = { ...standard(), players: makePlayers(5) }
+    const locked = structuredClone(generatePlan(input).slots[0]!)
+    const left = locked.positions.def_1
+    locked.positions.def_1 = locked.positions.def_2 ?? null
+    locked.positions.def_2 = left ?? null
+    const result = generatePlan({ ...input, lockedSlots: [locked] })
+    expect(result.slots[0]).toEqual(locked)
+    expect(result.slots[1]!.positions).toEqual(locked.positions)
   })
 })
 

@@ -8,12 +8,39 @@ import { getSlotIntervals } from '../utils/slotIntervals'
 
 function regenSlots(plan: MatchPlan): MatchPlan {
   const active = plan.roster.filter((p) => !plan.absentPlayerIds.includes(p.id))
+  const hasHistory = !!plan.lockedSlots?.length
+  const pins = { ...plan.pins }
+  if (hasHistory && plan.absentPlayerIds.length) {
+    const absentIds = plan.absentPlayerIds.filter((id) => plan.roster.some((p) => p.id === id))
+    let intervalCount = 0
+    try {
+      intervalCount = buildSegments(
+        plan.sportConfig, plan.benchStintMinutes, plan.matchCount, plan.changeKeeperMidPeriod,
+      ).length
+    } catch {
+      // Invalid configuration is reported by generation while retaining history.
+    }
+    for (let index = plan.lockedSlots!.length; index < intervalCount; index++) {
+      const pin = { ...pins[index] }
+      const remaining = (ids: string[]) => ids.filter((id) => !absentIds.includes(id))
+      const fields = remaining([...new Set([...(pin.fieldIds ?? []), ...(pin.requiredFieldIds ?? [])])])
+      const bench = remaining([...new Set([...(pin.benchIds ?? []), ...(pin.requiredBenchIds ?? [])])])
+      delete pin.fieldIds
+      delete pin.benchIds
+      if (pin.gkId && absentIds.includes(pin.gkId)) delete pin.gkId
+      pin.requiredFieldIds = fields
+      pin.requiredBenchIds = bench
+      pin.absentIds = [...new Set([...(pin.absentIds ?? []), ...absentIds])]
+      pin.absentCreditedIds = remaining(pin.absentCreditedIds ?? [])
+      pins[index] = pin
+    }
+  }
   const result = generatePlan({
     sportConfig: plan.sportConfig,
-    players: active,
+    players: hasHistory ? plan.roster : active,
     benchStintMinutes: plan.benchStintMinutes,
     matchCount: plan.matchCount,
-    pins: plan.pins,
+    pins,
     changeKeeperMidPeriod: plan.changeKeeperMidPeriod,
     maxBenchSegments: plan.maxBenchSegments,
     minSubsPerSegment: plan.minSubsPerSegment,
@@ -217,7 +244,8 @@ export const useSavedPlansStore = create<SavedPlansState>()(
           const idx = s.items.findIndex((i) => i.kind === 'match' && i.plan.id === plan.id)
           const existing = s.items[idx]
           if (existing?.kind === 'match' && existing.plan.lockedSlots?.length) {
-            if (changesStructure(existing.plan, plan)) return {}
+            if (changesStructure(existing.plan, plan) ||
+              existing.plan.roster.some((p) => !plan.roster.some((next) => next.id === p.id))) return {}
             plan = {
               ...plan,
               lockedSlots: existing.plan.lockedSlots,
