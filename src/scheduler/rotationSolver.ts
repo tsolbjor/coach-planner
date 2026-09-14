@@ -43,6 +43,7 @@ function compareByFairnessOrder(
   rotationCursor: number,
   totalPlayers: number,
 ): number {
+  if (totalPlayers <= 0) return aId < bId ? -1 : aId > bId ? 1 : 0
   const aBase = fairnessOrder.get(aId) ?? 0
   const bBase = fairnessOrder.get(bId) ?? 0
   const aRank = (aBase - rotationCursor + totalPlayers) % totalPlayers
@@ -410,7 +411,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       if (gkId) {
         lastKeeperId = gkId
       }
-      rotationCursor = (rotationCursor + Math.max(1, segBenchSpots)) % players.length
+      if (players.length > 0) {
+        rotationCursor = (rotationCursor + Math.max(1, segBenchSpots)) % players.length
+      }
     }
   }
 
