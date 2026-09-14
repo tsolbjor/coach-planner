@@ -33,6 +33,7 @@ interface PlayerStats {
   periodEndBenchCount: number
   lastBenchedSeg: number
   keeperSegments: number
+  consecutiveOnFieldSegments: number
 }
 
 export function solveRotation(input: RotationSolverInput): RotationSolverResult {
@@ -75,6 +76,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       periodEndBenchCount: 0,
       lastBenchedSeg: -Infinity,
       keeperSegments: 0,
+      consecutiveOnFieldSegments: 0,
     })
   }
 
@@ -346,6 +348,14 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         if (s) s.pitchCount++
       }
 
+      const onFieldSet = new Set([...(gkId ? [gkId] : []), ...field])
+      for (const p of players) {
+        const s = stats.get(p.id)
+        if (!s) continue
+        if (onFieldSet.has(p.id)) s.consecutiveOnFieldSegments += 1
+        else s.consecutiveOnFieldSegments = 0
+      }
+
       // Update consecutive-bench counter.
       for (const p of players) {
         if (benchSet.has(p.id)) {
@@ -474,6 +484,12 @@ function pickBench(args: PickBenchArgs): string[] {
     (p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id),
   )
   fieldCandidates.sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+  const protectedRecentReturners = fieldCandidates.filter(
+    (p) => (stats.get(p.id)?.consecutiveOnFieldSegments ?? 0) <= 1,
+  )
+  const preferredFieldCandidates = fieldCandidates.filter(
+    (p) => (stats.get(p.id)?.consecutiveOnFieldSegments ?? 0) > 1,
+  )
 
   const totalKeeperEligible = active.filter(isKeeperEligible).length
   let keOnNewBench = stayedBench.filter((id) => {
@@ -486,7 +502,15 @@ function pickBench(args: PickBenchArgs): string[] {
   }).length
 
   const newBenchAddition: string[] = []
-  for (const p of fieldCandidates) {
+  for (const p of preferredFieldCandidates) {
+    if (newBenchAddition.length >= subOn.length) break
+    if (isL1(p) && l1OnNewBench >= 1) continue
+    if (isKeeperEligible(p) && totalKeeperEligible - keOnNewBench - 1 < 1) continue
+    newBenchAddition.push(p.id)
+    if (isL1(p)) l1OnNewBench++
+    if (isKeeperEligible(p)) keOnNewBench++
+  }
+  for (const p of protectedRecentReturners) {
     if (newBenchAddition.length >= subOn.length) break
     if (isL1(p) && l1OnNewBench >= 1) continue
     if (isKeeperEligible(p) && totalKeeperEligible - keOnNewBench - 1 < 1) continue
@@ -592,6 +616,9 @@ function compareForBench(
 ): number {
   const sa = stats.get(a.id)!
   const sb = stats.get(b.id)!
+  if (sa.consecutiveOnFieldSegments !== sb.consecutiveOnFieldSegments) {
+    return sb.consecutiveOnFieldSegments - sa.consecutiveOnFieldSegments
+  }
   if (sa.pitchCount !== sb.pitchCount) return sb.pitchCount - sa.pitchCount
   if (sa.benchCount !== sb.benchCount) return sa.benchCount - sb.benchCount
   if (isBoundaryStart && sa.periodStartBenchCount !== sb.periodStartBenchCount) {
@@ -670,6 +697,23 @@ function normalizeBench(args: {
         nextBench.push(p.id)
         seen.add(p.id)
       }
+  }
+
+  if (nextBench.length < benchSpots) {
+    const forcedFill = active
+      .filter((p) => p.id !== gkId && !seen.has(p.id) && forcedFieldIds.has(p.id))
+      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+    for (const p of forcedFill) {
+      if (nextBench.length >= benchSpots) break
+      nextBench.push(p.id)
+      seen.add(p.id)
+    }
+    if (forcedFill.length > 0) {
+      warnings.push({
+        kind: 'lock-conflict',
+        message: `Pin at ${segmentLabel} relaxed a boundary carry-over preference to preserve exact on-field count.`,
+      })
+    }
   }
 
   return nextBench
