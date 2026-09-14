@@ -26,6 +26,21 @@ function consecutiveOnFieldStreak(slots: TimeSlot[], upToIndex: number, playerId
   return streak
 }
 
+function keeperStintsByMatch(slots: TimeSlot[]): string[] {
+  const keeperIds: string[] = []
+  let previousMatch = -1
+  let previousKeeper: string | null = null
+  for (const slot of slots) {
+    if (slot.matchIndex !== previousMatch) previousKeeper = null
+    const preKeeper = slot.midSwap?.preGkId ?? slot.gkId
+    if (preKeeper && preKeeper !== previousKeeper) keeperIds.push(preKeeper)
+    if (slot.gkId && slot.gkId !== preKeeper) keeperIds.push(slot.gkId)
+    previousKeeper = slot.gkId
+    previousMatch = slot.matchIndex
+  }
+  return keeperIds
+}
+
 describe('generatePlan (integration)', () => {
   it('7 players, 5 on field, 2 periods × 4 segments — pitch time within ±1 segment', () => {
     const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 20 })
@@ -294,6 +309,25 @@ describe('generatePlan (integration)', () => {
     expect(firstEightKeeperIds.every((id): id is string => !!id)).toBe(true)
     expect(new Set(firstEightKeeperIds).size).toBe(8)
   })
+
+  it.each([15, 20])(
+    'gives every keeper-eligible player one stint before midpoint-swap repeats (%i minute periods)',
+    (periodDurationMinutes) => {
+      const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes })
+      const players: Player[] = makePlayers(8)
+      const result = generatePlan({
+        sportConfig: sport,
+        players,
+        benchStintMinutes: 5,
+        matchCount: 4,
+        changeKeeperMidPeriod: true,
+      })
+
+      const firstCycle = keeperStintsByMatch(result.slots).slice(0, players.length)
+      expect(firstCycle).toHaveLength(players.length)
+      expect(new Set(firstCycle).size).toBe(players.length)
+    },
+  )
 
   it('keeper tie-breaking carries across matches instead of resetting to id order', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 })
