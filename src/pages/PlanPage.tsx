@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { normalizePlayerLevel } from '../types'
 import { buildShareUrl } from '../utils/shareUrl'
+import { getBoundaryTransition } from '../utils/slotTransitions'
 import { generatePlan } from '../scheduler'
 import { useSavedPlansStore } from '../store'
 import type { MatchPlan } from '../types'
@@ -158,13 +159,9 @@ export function PlanPage() {
   const activeOnIds = activeEntry
     ? [activeEntry.slot.gkId, ...activeEntry.slot.fieldIds].filter((pid): pid is string => !!pid)
     : []
-  const nextOnIds = nextEntry
-    ? [nextEntry.slot.gkId, ...nextEntry.slot.fieldIds].filter((pid): pid is string => !!pid)
-    : []
-  const activeOnSet = new Set(activeOnIds)
-  const nextOnSet = new Set(nextOnIds)
-  const offNextIds = activeOnIds.filter((pid) => !nextOnSet.has(pid))
-  const onNextIds = nextOnIds.filter((pid) => !activeOnSet.has(pid))
+  const nextBoundary = activeEntry ? getBoundaryTransition(activeEntry.slot, nextEntry?.slot) : { off: [], on: [] }
+  const offNextIds = nextBoundary.off
+  const onNextIds = nextBoundary.on
   const activeBenchIds = activeEntry?.slot.benchIds ?? []
   const activeAbsentIds = activeEntry?.slot.absentIds ?? []
 
@@ -514,13 +511,8 @@ export function PlanPage() {
                         <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
                           {periodSlots.map((slot, idx) => {
                             const next = periodSlots[idx + 1]
-                            const curIds = new Set([...(slot.gkId ? [slot.gkId] : []), ...slot.fieldIds])
-                            const nextIds = next
-                              ? new Set([...(next.gkId ? [next.gkId] : []), ...next.fieldIds])
-                              : null
-                            const goingOff = nextIds
-                              ? [...curIds].filter((pid) => !nextIds.has(pid))
-                              : []
+                            const nextBoundary = getBoundaryTransition(slot, next)
+                            const goingOff = nextBoundary.off
                             const gkPlayer = slot.gkId ? playerById.get(slot.gkId) : null
                             return (
                               <div

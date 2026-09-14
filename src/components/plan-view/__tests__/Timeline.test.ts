@@ -72,4 +72,34 @@ describe('buildPlayerStatsMap', () => {
 
     expect(stats.get('p1')?.minConsecutiveOnField).toBe(5)
   })
+
+  it('tracks mid-segment keeper swaps as half-segment runs and substitution events', () => {
+    const slots: TimeSlot[] = [
+      makeSlot(0, ['p1']),
+      makeSlot(1, ['p2'], {
+        gkId: 'p2',
+        benchIds: ['p1'],
+        midSwap: {
+          atMinute: 7.5,
+          preGkId: 'p1',
+          preFieldIds: [],
+          preBenchIds: ['p2'],
+          prePositions: {},
+        },
+      }),
+    ]
+
+    const stats = buildPlayerStatsMap(slots, players)
+
+    expect(stats.get('p1')).toMatchObject({
+      maxConsecutiveOnField: 7.5,
+      subbedOffCount: 1,
+      totalSubEvents: 1,
+    })
+    expect(stats.get('p2')).toMatchObject({
+      benchStints: 1,
+      subbedOnCount: 1,
+      totalSubEvents: 1,
+    })
+  })
 })
