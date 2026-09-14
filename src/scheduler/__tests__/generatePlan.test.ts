@@ -298,7 +298,7 @@ describe('generatePlan (integration)', () => {
     expect(result.slots[2]!.gkId).toBe('p2')
   })
 
-  it('plans boundary keeper swaps through the previous bench and benches the outgoing keeper', () => {
+  it('does not force the outgoing keeper onto bench when switching at period boundary', () => {
     const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 10 })
     const players: Player[] = makePlayers(6)
     for (let i = 2; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['gk']
@@ -307,15 +307,18 @@ describe('generatePlan (integration)', () => {
       players,
       benchStintMinutes: 5,
       matchCount: 1,
+      pins: {
+        1: { gkId: 'p1' },
+        2: { gkId: 'p2', fieldIds: ['p1', 'p3', 'p4', 'p5'] },
+      },
     })
 
-    expect(result.slots[1]!.gkId).toBe('p1')
-    expect(result.slots[1]!.benchIds).toEqual(['p2'])
     expect(result.slots[2]!.gkId).toBe('p2')
-    expect(result.slots[2]!.benchIds).toEqual(['p1'])
+    expect(result.slots[2]!.fieldIds).toContain('p1')
+    expect(result.slots[2]!.benchIds).not.toContain('p1')
   })
 
-  it('keeps the planned incoming keeper on the prior bench even if that segment pinned them on field', () => {
+  it('does not force incoming boundary keeper onto prior bench when pinned on field', () => {
     const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 10 })
     const players: Player[] = makePlayers(7)
     const result = generatePlan({
@@ -329,7 +332,8 @@ describe('generatePlan (integration)', () => {
       },
     })
 
-    expect(result.slots[0]!.benchIds).toContain('p2')
+    expect(result.slots[0]!.fieldIds).toContain('p2')
+    expect(result.slots[0]!.benchIds).not.toContain('p2')
     expect(result.slots[1]!.gkId).toBe('p2')
   })
 
