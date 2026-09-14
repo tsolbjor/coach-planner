@@ -280,6 +280,21 @@ describe('generatePlan (integration)', () => {
     expect(Math.abs((minutes.get('p1') ?? 0) - (minutes.get('p2') ?? 0))).toBeLessThanOrEqual(20)
   })
 
+  it('gives every keeper-eligible player one stint before repeats', () => {
+    const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 })
+    const players: Player[] = makePlayers(8)
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 10,
+      matchCount: 10,
+    })
+
+    const firstEightKeeperIds = result.slots.slice(0, 8).map((slot) => slot.gkId)
+    expect(firstEightKeeperIds.every((id): id is string => !!id)).toBe(true)
+    expect(new Set(firstEightKeeperIds).size).toBe(8)
+  })
+
   it('keeper tie-breaking carries across matches instead of resetting to id order', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 })
     const players: Player[] = makePlayers(6)

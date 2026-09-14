@@ -33,6 +33,7 @@ interface PlayerStats {
   periodEndBenchCount: number
   lastBenchedSeg: number
   keeperSegments: number
+  keeperStints: number
   consecutiveOnFieldSegments: number
 }
 
@@ -92,6 +93,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       periodEndBenchCount: 0,
       lastBenchedSeg: -Infinity,
       keeperSegments: 0,
+      keeperStints: 0,
       consecutiveOnFieldSegments: 0,
     })
   }
@@ -158,10 +160,13 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       let preBenchForMidSwap: string[] | null = null
       let midPeriodSwapApplied: { incoming: string; outgoing: string } | null = null
       const keeperCmp = (a: Player, b: Player) => {
-        const ka = stats.get(a.id)?.keeperSegments ?? 0
-        const kb = stats.get(b.id)?.keeperSegments ?? 0
-        if (ka !== kb) return ka - kb
-        return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, players.length)
+        return compareKeepers(a.id, b.id, {
+          stats,
+          lastKeeperId,
+          fairnessOrder,
+          rotationCursor,
+          totalPlayers: players.length,
+        })
       }
 
       const hasBenchPin = (pin.benchIds?.length ?? 0) > 0
@@ -281,17 +286,13 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
               message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
             })
           }
-        } else if (newPeriod && prevGkId && activeIds.has(prevGkId)) {
-          const currentKeeper = playerById.get(prevGkId)
-          const benchCandidates = [...prevBench]
-            .map((id) => playerById.get(id))
-            .filter((p): p is Player => !!p && activeIds.has(p.id) && isKeeperEligible(p) && p.id !== prevGkId)
-            .sort(keeperCmp)
-          const boundaryKeeper = benchCandidates[0] ?? null
-          if (boundaryKeeper && (!currentKeeper || keeperCmp(boundaryKeeper, currentKeeper) < 0)) {
-            gkId = boundaryKeeper.id
-          } else {
-            gkId = prevGkId
+        } else if (keeperPositionTypeId && newPeriod) {
+          gkId = pickKeeper(active, stats, lastKeeperId, isKeeperEligible, fairnessOrder, rotationCursor, players.length)
+          if (!gkId) {
+            warnings.push({
+              kind: 'keeper-unavailable',
+              message: 'No keeper-eligible player available.',
+            })
           }
         } else if (!newPeriod && prevGkId && activeIds.has(prevGkId)) {
           gkId = prevGkId
@@ -414,6 +415,10 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       gkBySegment[seg.segmentIndex] = gkId
       benchBySegment[seg.segmentIndex] = bench
       fieldBySegment[seg.segmentIndex] = field
+      if (gkId && gkId !== prevGkId) {
+        const keeperStats = stats.get(gkId)
+        if (keeperStats) keeperStats.keeperStints += 1
+      }
 
       for (const id of bench) {
         const s = stats.get(id)
@@ -498,15 +503,39 @@ function pickKeeper(
   const eligible = players.filter(isEligible)
   if (eligible.length === 0) return null
   const sorted = [...eligible].sort((a, b) => {
-    const ka = stats.get(a.id)?.keeperSegments ?? 0
-    const kb = stats.get(b.id)?.keeperSegments ?? 0
-    if (ka !== kb) return ka - kb
-    const aWasLast = a.id === lastKeeperId ? 1 : 0
-    const bWasLast = b.id === lastKeeperId ? 1 : 0
-    if (aWasLast !== bWasLast) return aWasLast - bWasLast
-    return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, totalPlayers)
+    return compareKeepers(a.id, b.id, {
+      stats,
+      lastKeeperId,
+      fairnessOrder,
+      rotationCursor,
+      totalPlayers,
+    })
   })
   return sorted[0]!.id
+}
+
+function compareKeepers(
+  aId: string,
+  bId: string,
+  args: {
+    stats: Map<string, PlayerStats>
+    lastKeeperId: string | null
+    fairnessOrder: Map<string, number>
+    rotationCursor: number
+    totalPlayers: number
+  },
+): number {
+  const { stats, lastKeeperId, fairnessOrder, rotationCursor, totalPlayers } = args
+  const aStints = stats.get(aId)?.keeperStints ?? 0
+  const bStints = stats.get(bId)?.keeperStints ?? 0
+  if (aStints !== bStints) return aStints - bStints
+  const aSegments = stats.get(aId)?.keeperSegments ?? 0
+  const bSegments = stats.get(bId)?.keeperSegments ?? 0
+  if (aSegments !== bSegments) return aSegments - bSegments
+  const aWasLast = aId === lastKeeperId ? 1 : 0
+  const bWasLast = bId === lastKeeperId ? 1 : 0
+  if (aWasLast !== bWasLast) return aWasLast - bWasLast
+  return compareByFairnessOrder(aId, bId, fairnessOrder, rotationCursor, totalPlayers)
 }
 
 interface PickBenchArgs {
