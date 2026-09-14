@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import type { Player, TimeSlot } from '../../../types'
 import { buildPlayerStatsMap } from '../Timeline'
+import { Timeline } from '../Timeline'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { expandSlotEntries } from '../../../utils/slotIntervals'
+import { makeFiveASide } from '../../../scheduler/__tests__/fixtures'
 
 const players: Player[] = [
   { id: 'p1', name: 'P1', level: 2, excludedPositionTypeIds: [] },
@@ -101,5 +106,20 @@ describe('buildPlayerStatsMap', () => {
       subbedOnCount: 1,
       totalSubEvents: 1,
     })
+    expect(buildPlayerStatsMap(expandSlotEntries(slots).map((entry) => entry.slot), players)).toEqual(stats)
+  })
+
+  it('calculates pitch percentage across all displayed matches', () => {
+    const slots = [
+      makeSlot(0, ['p1'], { endMinute: 10 }),
+      makeSlot(0, ['p1'], { id: 'match2', endMinute: 10, matchIndex: 1 }),
+    ]
+    const html = renderToStaticMarkup(createElement(Timeline, {
+      slots,
+      players,
+      sportConfig: makeFiveASide({ periodCount: 1, periodDurationMinutes: 10 }),
+    }))
+    expect(html).toContain('100%')
+    expect(html).not.toContain('200%')
   })
 })

@@ -1,5 +1,7 @@
 import type { MatchPlan } from '../../types'
 import { Timeline } from './Timeline'
+import { getBoundaryTransition } from '../../utils/slotTransitions'
+import { formatMinute, groupSlotsByPeriod } from '../../utils/slotIntervals'
 
 interface PrintLayoutProps {
   plan: MatchPlan
@@ -14,30 +16,33 @@ export function PrintLayout({ plan }: PrintLayoutProps) {
         <h1 className="text-2xl font-bold">{plan.name}</h1>
         <p className="text-slate-500 text-sm">
           {plan.sportConfig.name} · {plan.sportConfig.periodCount}×{plan.sportConfig.periodDurationMinutes} min ·{' '}
-          {plan.benchStintMinutes} min stints
+          {plan.benchStintMinutes} min substitution interval
         </p>
       </div>
 
       <Timeline slots={plan.slots} sportConfig={plan.sportConfig} players={plan.roster} />
 
-      {Array.from({ length: plan.sportConfig.periodCount }, (_, pi) => {
-        const periodSlots = plan.slots.filter((s) => s.periodIndex === pi)
+      {(plan.warnings?.length ?? 0) > 0 && (
+        <div className="text-sm text-amber-800">
+          <h2 className="font-semibold">Plan warnings</h2>
+          {plan.warnings!.map((warning, index) => <p key={index}>{warning.message}</p>)}
+        </div>
+      )}
+
+      {groupSlotsByPeriod(plan.slots).map(({ matchIndex, periodIndex, slots: periodSlots }) => {
         return (
-          <div key={pi}>
-            <h2 className="text-lg font-semibold mb-2">Half {pi + 1}</h2>
+          <div key={`${matchIndex}:${periodIndex}`}>
+            <h2 className="text-lg font-semibold mb-2">Match {matchIndex + 1} · Period {periodIndex + 1}</h2>
             <div className="grid grid-cols-1 gap-2">
               {periodSlots.map((slot, idx) => {
                 const next = periodSlots[idx + 1]
-                const curIds = new Set([...(slot.gkId ? [slot.gkId] : []), ...slot.fieldIds])
-                const nextIds = next
-                  ? new Set([...(next.gkId ? [next.gkId] : []), ...next.fieldIds])
-                  : null
-                const goingOff = nextIds ? [...curIds].filter((pid) => !nextIds.has(pid)) : []
+                const transition = getBoundaryTransition(slot, next)
+                const goingOff = transition.off
                 const gk = slot.gkId ? playerById.get(slot.gkId) : null
                 return (
                   <div key={slot.id} className="border border-slate-200 rounded-xl p-3">
                     <p className="text-xs font-semibold text-slate-500 mb-1.5">
-                      {Math.floor(slot.startMinute)}'–{Math.floor(slot.endMinute)}'
+                      {formatMinute(slot.startMinute)}–{formatMinute(slot.endMinute)}
                     </p>
                     <p className="text-xs">
                       <span className="font-semibold">GK:</span> {gk?.name ?? '—'}
@@ -66,6 +71,13 @@ export function PrintLayout({ plan }: PrintLayoutProps) {
                       <p className="text-xs text-slate-500 mt-1">
                         <span className="font-semibold">Bench:</span>{' '}
                         {slot.benchIds.map((id) => playerById.get(id)?.name ?? id).join(', ')}
+                      </p>
+                    )}
+                    {(transition.off.length > 0 || transition.on.length > 0) && (
+                      <p className="text-xs mt-1">
+                        <span className="font-semibold">Next substitution at {formatMinute(slot.endMinute)}:</span>{' '}
+                        Off: {transition.off.map((id) => playerById.get(id)?.name ?? id).join(', ') || '—'}
+                        {' · '}On: {transition.on.map((id) => playerById.get(id)?.name ?? id).join(', ') || '—'}
                       </p>
                     )}
                   </div>

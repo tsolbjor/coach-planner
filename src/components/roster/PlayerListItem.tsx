@@ -100,18 +100,18 @@ export function PlayerListItem({
             className={[NAME_INPUT_CLASS, 'w-36 sm:w-44 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'].join(' ')}
           />
           <select
-            value={level}
+            value={level === 1 ? 1 : 2}
             onChange={(e) => {
               const nextLevel = normalizePlayerLevel(Number(e.target.value))
               setLevel(nextLevel)
               commit({ level: nextLevel })
             }}
-            aria-label="Player level"
-            className="w-16 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Bench-group preference"
+            title="Avoid benching more than one protected player together, when possible"
+            className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-blue-500"
           >
-            <option value={1}>L1</option>
-            <option value={2}>L2</option>
-            <option value={3}>L3</option>
+            <option value={1}>Protected</option>
+            <option value={2}>Standard</option>
           </select>
         </div>
 

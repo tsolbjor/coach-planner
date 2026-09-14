@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { MatchPlan } from '../../types'
 import { useSavedPlansStore } from '../../store'
+import { changesStructure } from '../../store/savedPlansStore'
 import { Card } from '../common/Card'
 import { NumberStepper } from '../common/NumberStepper'
 import { Button } from '../common/Button'
@@ -30,6 +31,22 @@ export function SetupModal({ plan, onClose }: SetupModalProps) {
   const periodDuration = plan.sportConfig.periodDurationMinutes
   const onField = positions.length
   const benchSize = Math.max(0, totalPlayers - onField)
+  const [setupNotice, setSetupNotice] = useState('')
+
+  const applySettings = (updates: Partial<MatchPlan>) => {
+    const structural = changesStructure(plan, updates) ||
+      (updates.roster !== undefined && updates.roster.length !== plan.roster.length)
+    if (structural && plan.lockedSlots?.length) {
+      setSetupNotice('Completed play is locked. Timing, lineup size, and roster size cannot be changed in this plan.')
+      return
+    }
+    if (structural && Object.keys(plan.pins).length) {
+      if (!window.confirm('Changing this setup clears existing segment overrides. Continue?')) return
+      updates = { ...updates, pins: {} }
+    }
+    setSetupNotice('')
+    updateMatch(plan.id, updates)
+  }
 
   const applySetup = (
     nextPositions: PositionRow[],
@@ -52,13 +69,11 @@ export function SetupModal({ plan, onClose }: SetupModalProps) {
     )
     const validRosterIds = new Set(resizedRoster.map((p) => p.id))
 
-    updateMatch(plan.id, {
+    applySettings({
       sportConfig: nextSportConfig,
       roster: resizedRoster,
       absentPlayerIds: plan.absentPlayerIds.filter((id) => validRosterIds.has(id)),
       benchStintMinutes: Math.min(plan.benchStintMinutes, nextPeriodDuration),
-      slots: [],
-      pins: {},
     })
   }
 
@@ -69,15 +84,23 @@ export function SetupModal({ plan, onClose }: SetupModalProps) {
   }
 
   const handleLabelChange = (id: string, label: string) => {
-    const nextPositions = positions.map((position, index) =>
-      position.id === id ? { ...position, label: index === 0 ? 'GK' : label } : position,
-    )
-    applySetup(nextPositions, totalPlayers, periodCount, periodDuration)
+    updateMatch(plan.id, {
+      sportConfig: {
+        ...plan.sportConfig,
+        lineupSlots: plan.sportConfig.lineupSlots.map((slot) =>
+          slot.slotId === id ? { ...slot, label } : slot,
+        ),
+      },
+    })
   }
 
   return (
     <ModalShell title="Setup" eyebrow="Plan settings" onClose={onClose} maxWidth="lg">
       <div className="space-y-5">
+        {setupNotice && <p role="status" className="text-sm text-amber-700">{setupNotice}</p>}
+        {!!plan.lockedSlots?.length && (
+          <p className="text-xs text-slate-500">Completed play is protected. Structural setup changes are disabled.</p>
+        )}
         <Card className="space-y-4">
           <NumberStepper label="Players on field" value={onField} min={1} max={15} onChange={handleOnFieldChange} />
           <NumberStepper
@@ -115,12 +138,12 @@ export function SetupModal({ plan, onClose }: SetupModalProps) {
           minSubsPerSegment={plan.minSubsPerSegment}
           maxSubsPerSegment={plan.maxSubsPerSegment}
           benchSize={benchSize}
-          onBenchStintChange={(v) => updateMatch(plan.id, { benchStintMinutes: v })}
-          onMatchCountChange={(v) => updateMatch(plan.id, { matchCount: v })}
-          onChangeKeeperMidPeriodChange={(v) => updateMatch(plan.id, { changeKeeperMidPeriod: v })}
-          onMaxBenchSegmentsChange={(v) => updateMatch(plan.id, { maxBenchSegments: v })}
-          onMinSubsPerSegmentChange={(v) => updateMatch(plan.id, { minSubsPerSegment: v })}
-          onMaxSubsPerSegmentChange={(v) => updateMatch(plan.id, { maxSubsPerSegment: v })}
+          onBenchStintChange={(v) => applySettings({ benchStintMinutes: v })}
+          onMatchCountChange={(v) => applySettings({ matchCount: v })}
+          onChangeKeeperMidPeriodChange={(v) => applySettings({ changeKeeperMidPeriod: v })}
+          onMaxBenchSegmentsChange={(v) => applySettings({ maxBenchSegments: v })}
+          onMinSubsPerSegmentChange={(v) => applySettings({ minSubsPerSegment: v })}
+          onMaxSubsPerSegmentChange={(v) => applySettings({ maxSubsPerSegment: v })}
         />
 
         <Card padding={false}>

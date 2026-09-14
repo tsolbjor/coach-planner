@@ -25,25 +25,39 @@ function roleOf(slot: TimeSlot, playerId: string): CellRole | 'unknown' {
   return 'unknown'
 }
 
-function swap(slot: TimeSlot, a: string, b: string): SegmentPin {
-  const roleA = roleOf(slot, a)
-  const roleB = roleOf(slot, b)
-  let gk = slot.gkId
-  let field = [...slot.fieldIds]
-  let bench = [...slot.benchIds]
-
-  const setRole = (player: string, role: CellRole | 'unknown') => {
-    field = field.filter((id) => id !== player)
-    bench = bench.filter((id) => id !== player)
-    if (gk === player) gk = null
-    if (role === 'gk') gk = player
-    if (role === 'field') field.push(player)
-    if (role === 'bench') bench.push(player)
+function clearPlayerConstraints(existing: SegmentPin | undefined, playerIds: string[]): SegmentPin {
+  const next: SegmentPin = { ...existing }
+  // Preserve existing positive constraints without turning a two-player edit into
+  // an exact snapshot of the rest of the automatically generated lineup.
+  const fields = [...new Set([...(next.fieldIds ?? []), ...(next.requiredFieldIds ?? [])])]
+  const bench = [...new Set([...(next.benchIds ?? []), ...(next.requiredBenchIds ?? [])])]
+  delete next.fieldIds
+  delete next.benchIds
+  next.requiredFieldIds = fields
+  next.requiredBenchIds = bench
+  for (const key of ['requiredFieldIds', 'requiredBenchIds', 'absentIds', 'absentCreditedIds'] as const) {
+    if (next[key]) {
+      next[key] = next[key]!.filter((id) => !playerIds.includes(id))
+      if (!next[key]!.length) delete next[key]
+    }
   }
+  if (next.gkId && playerIds.includes(next.gkId)) delete next.gkId
+  return next
+}
 
-  setRole(a, roleB)
-  setRole(b, roleA)
-  return { gkId: gk, fieldIds: field, benchIds: bench }
+function swap(slot: TimeSlot, existing: SegmentPin | undefined, a: string, b: string): SegmentPin {
+  const next = clearPlayerConstraints(existing, [a, b])
+  const setRole = (player: string, role: CellRole | 'unknown') => {
+    if (role === 'gk') next.gkId = player
+    const key = role === 'field' ? 'requiredFieldIds'
+      : role === 'bench' ? 'requiredBenchIds'
+        : role === 'absent' ? 'absentIds'
+          : role === 'absent-credited' ? 'absentCreditedIds' : null
+    if (key) next[key] = [...new Set([...(next[key] ?? []), player])]
+  }
+  setRole(a, roleOf(slot, b))
+  setRole(b, roleOf(slot, a))
+  return next
 }
 
 function isOnFieldRole(role: CellRole | 'unknown'): role is 'gk' | 'field' {
@@ -51,13 +65,8 @@ function isOnFieldRole(role: CellRole | 'unknown'): role is 'gk' | 'field' {
 }
 
 function keepPlayerBenched(existing: SegmentPin | undefined, playerId: string): SegmentPin {
-  const next: SegmentPin = { ...(existing ?? {}) }
-  next.benchIds = Array.from(new Set([...(next.benchIds ?? []), playerId]))
-  if (next.gkId === playerId) delete next.gkId
-  if (next.fieldIds) {
-    next.fieldIds = next.fieldIds.filter((id) => id !== playerId)
-    if (next.fieldIds.length === 0) delete next.fieldIds
-  }
+  const next = clearPlayerConstraints(existing, [playerId])
+  next.requiredBenchIds = [...new Set([...(next.requiredBenchIds ?? []), playerId])]
   return next
 }
 
@@ -81,7 +90,7 @@ export function buildSwapPinUpdates(args: {
   if (!slot || otherPlayerId === selectedPlayerId) return {}
 
   const updates: Record<number, SegmentPin | null> = {
-    [segmentIndex]: swap(slot, selectedPlayerId, otherPlayerId),
+    [segmentIndex]: swap(slot, pins[segmentIndex], selectedPlayerId, otherPlayerId),
   }
   if (interactionMode !== 'in-game') return updates
 
@@ -104,8 +113,8 @@ export function buildSwapPinUpdates(args: {
   return updates
 }
 
-function applyAbsence(existing: SegmentPin | undefined, playerId: string, credit: boolean): SegmentPin {
-  const base = existing ?? {}
+export function applyAbsence(existing: SegmentPin | undefined, playerId: string, credit: boolean): SegmentPin {
+  const base = clearPlayerConstraints(existing, [playerId])
   const absent = new Set(base.absentIds ?? [])
   const credited = new Set(base.absentCreditedIds ?? [])
   if (credit) {
@@ -119,13 +128,10 @@ function applyAbsence(existing: SegmentPin | undefined, playerId: string, credit
     ...base,
     absentIds: [...absent],
     absentCreditedIds: [...credited],
-    gkId: base.gkId === playerId ? null : base.gkId,
-    fieldIds: base.fieldIds?.filter((id) => id !== playerId),
-    benchIds: base.benchIds?.filter((id) => id !== playerId),
   }
 }
 
-function applyPresence(existing: SegmentPin | undefined, playerId: string): SegmentPin | null {
+export function applyPresence(existing: SegmentPin | undefined, playerId: string): SegmentPin | null {
   const base = existing ?? {}
   const absent = (base.absentIds ?? []).filter((id) => id !== playerId)
   const credited = (base.absentCreditedIds ?? []).filter((id) => id !== playerId)
@@ -136,6 +142,8 @@ function applyPresence(existing: SegmentPin | undefined, playerId: string): Segm
     next.gkId === undefined &&
     next.fieldIds === undefined &&
     next.benchIds === undefined &&
+    next.requiredFieldIds === undefined &&
+    next.requiredBenchIds === undefined &&
     next.absentIds === undefined &&
     next.absentCreditedIds === undefined
   return empty ? null : next

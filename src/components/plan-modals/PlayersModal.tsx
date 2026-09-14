@@ -55,6 +55,9 @@ export function PlayersModal({ plan, onClose }: PlayersModalProps) {
           {ready ? ' ✓' : ` — ${needed - roster.length} more needed`}
           {absentPlayerIds.length > 0 ? ` · ${activePlayerCount} active` : ''}
         </div>
+        <p className="text-xs text-slate-500">
+          Protected: prefer no more than one of these players on the bench together. Standard players have the same rotation priority. Existing L1 players are protected; L2 and L3 are standard.
+        </p>
 
         {roster.length === 0 ? (
           <div className="py-8 text-center text-slate-400">

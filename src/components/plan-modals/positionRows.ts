@@ -55,7 +55,7 @@ export function buildSportConfigFromRows(
     return {
       ...position,
       label,
-      positionTypeId: index === 0 ? 'gk' : label.toLowerCase(),
+      positionTypeId: position.positionTypeId,
       group: index === 0 ? ('keeper' as const) : position.group,
     }
   })
@@ -72,11 +72,10 @@ export function buildSportConfigFromRows(
       shortLabel: position.label,
       group: position.group,
       isKeeper: position.positionTypeId === 'gk',
-      rotateEveryMinutes: 0,
+      rotateEveryMinutes: position.rotateEveryMinutes,
     })
   }
 
-  const slotCounter = new Map<string, number>()
   return {
     presetId: 'custom',
     name: `${normalizedPositions.length}-a-side`,
@@ -87,10 +86,8 @@ export function buildSportConfigFromRows(
     hasKeeper: true,
     positionTypes,
     lineupSlots: normalizedPositions.map((position) => {
-      const n = (slotCounter.get(position.positionTypeId) ?? 0) + 1
-      slotCounter.set(position.positionTypeId, n)
       return {
-        slotId: `${position.positionTypeId}_${n}`,
+        slotId: position.id,
         positionTypeId: position.positionTypeId,
         label: position.label,
       }

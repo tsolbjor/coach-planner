@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { SegmentPin, TimeSlot } from '../../../types'
-import { buildSwapPinUpdates } from '../SegmentEditor'
+import { applyAbsence, applyPresence, buildSwapPinUpdates } from '../SegmentEditor'
 
 function makeSlot(overrides: Partial<TimeSlot> = {}): TimeSlot {
   return {
@@ -35,11 +35,10 @@ describe('buildSwapPinUpdates', () => {
     })
 
     expect(updates[0]).toEqual({
-      gkId: 'p1',
-      fieldIds: ['p3', 'p4', 'p5', 'p6'],
-      benchIds: ['p7', 'p2'],
+      requiredFieldIds: ['p6'],
+      requiredBenchIds: ['p2'],
     })
-    expect(updates[1]).toEqual({ benchIds: ['p2'] })
+    expect(updates[1]).toEqual({ requiredBenchIds: ['p2'] })
   })
 
   it('does not force the next stint in plan mode', () => {
@@ -88,9 +87,50 @@ describe('buildSwapPinUpdates', () => {
     })
 
     expect(updates[1]).toEqual({
-      benchIds: ['p7', 'p2'],
+      requiredBenchIds: ['p7', 'p2'],
       absentIds: ['p8'],
       gkId: 'p1',
     })
+  })
+
+  it('preserves unrelated overrides and removes conflicting constraints for both players', () => {
+    const updates = buildSwapPinUpdates({
+      slots: [makeSlot()],
+      pins: { 0: { gkId: 'p1', requiredFieldIds: ['p2', 'p3'], requiredBenchIds: ['p6', 'p7'],
+        absentIds: ['p6', 'p8'], absentCreditedIds: ['p2', 'p9'] } },
+      segmentIndex: 0,
+      selectedPlayerId: 'p2',
+      otherPlayerId: 'p6',
+    })
+    expect(updates[0]).toEqual({
+      gkId: 'p1', requiredFieldIds: ['p3', 'p6'], requiredBenchIds: ['p7', 'p2'],
+      absentIds: ['p8'], absentCreditedIds: ['p9'],
+    })
+  })
+
+  it('swaps keeper and bench without locking unrelated field players', () => {
+    const updates = buildSwapPinUpdates({
+      slots: [makeSlot()], pins: {}, segmentIndex: 0, selectedPlayerId: 'p1', otherPlayerId: 'p6',
+    })
+    expect(updates[0]).toEqual({ gkId: 'p6', requiredBenchIds: ['p1'] })
+  })
+
+  it('transfers credited absence when swapping with an absent player', () => {
+    const updates = buildSwapPinUpdates({
+      slots: [makeSlot({ absentIds: ['p8'], absentCreditedIds: ['p8'] })],
+      pins: { 0: { absentIds: ['p8', 'p9'], absentCreditedIds: ['p8'] } },
+      segmentIndex: 0, selectedPlayerId: 'p2', otherPlayerId: 'p8',
+    })
+    expect(updates[0]).toEqual({
+      absentIds: ['p9'], absentCreditedIds: ['p2'], requiredFieldIds: ['p8'],
+    })
+  })
+
+  it('marking absent clears targeted role conflicts; presence preserves other targeted pins', () => {
+    const pin = applyAbsence({ requiredFieldIds: ['p2', 'p3'], requiredBenchIds: ['p2', 'p7'], gkId: 'p2' }, 'p2', true)
+    expect(pin).toEqual({
+      requiredFieldIds: ['p3'], requiredBenchIds: ['p7'], absentIds: [], absentCreditedIds: ['p2'],
+    })
+    expect(applyPresence(pin, 'p2')).toEqual({ requiredFieldIds: ['p3'], requiredBenchIds: ['p7'] })
   })
 })

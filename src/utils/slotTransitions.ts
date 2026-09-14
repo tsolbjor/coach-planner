@@ -1,14 +1,15 @@
 import type { TimeSlot } from '../types'
+import { getSlotIntervals } from './slotIntervals'
 
 export function getSlotStartOnFieldIds(slot: TimeSlot): string[] {
-  if (slot.midSwap) {
-    return [slot.midSwap.preGkId, ...slot.midSwap.preFieldIds].filter((id): id is string => !!id)
-  }
-  return getSlotEndOnFieldIds(slot)
+  const first = getSlotIntervals(slot)[0]
+  return first ? getSlotEndOnFieldIds(first) : []
 }
 
 export function getSlotEndOnFieldIds(slot: TimeSlot): string[] {
-  return [slot.gkId, ...slot.fieldIds].filter((id): id is string => !!id)
+  const intervals = getSlotIntervals(slot)
+  const last = intervals[intervals.length - 1]
+  return last ? [last.gkId, ...last.fieldIds].filter((id): id is string => !!id) : []
 }
 
 export function getBoundaryTransition(currentSlot: TimeSlot, nextSlot?: TimeSlot | null) {

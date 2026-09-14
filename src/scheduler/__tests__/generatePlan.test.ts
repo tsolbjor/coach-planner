@@ -196,11 +196,10 @@ describe('generatePlan (integration)', () => {
     expect(fieldSet.has('p7')).toBe(false)
   })
 
-  it('bench pin containing keeper keeps exact on-field count', () => {
+  it('bench pin is considered before choosing an unpinned keeper', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players = makePlayers(7)
-    // p1 would be auto-picked as keeper (id sort, all tied on keeperSegments).
-    // Pinning p1 + p7 to bench creates a keeper-vs-bench conflict.
+    // The preferred keeper is not a constraint: another eligible player can keep.
     const result = generatePlan({
       sportConfig: sport,
       players,
@@ -214,7 +213,8 @@ describe('generatePlan (integration)', () => {
     expect(slot.benchIds.length).toBe(players.length - sport.totalOnField)
     // gkId must not appear in bench.
     if (slot.gkId) expect(slot.benchIds).not.toContain(slot.gkId)
-    expect(result.warnings.map((w) => w.kind)).toContain('lock-conflict')
+    expect(slot.benchIds).toEqual(['p1', 'p7'])
+    expect(result.warnings.map((w) => w.kind)).not.toContain('lock-conflict')
   })
 
   it('bench pin plus absence trims bench to keep a full lineup', () => {
@@ -249,7 +249,7 @@ describe('generatePlan (integration)', () => {
   it('warns when player eligibility cannot fill all outfield positions', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 })
     const players: Player[] = makePlayers(5)
-    for (let i = 1; i < players.length; i++) players[i]!.excludedPositionTypeIds = ['fwd']
+    for (const player of players) player.excludedPositionTypeIds = ['fwd']
     const result = generatePlan({
       sportConfig: sport,
       players,
@@ -386,7 +386,7 @@ describe('generatePlan (integration)', () => {
     expect(result.slots[1]!.gkId).toBe('p2')
   })
 
-  it('odd mid-segment keeper swap splits pitch time inside the swap segment', () => {
+  it('odd keeper midpoint becomes two ordinary intervals with exact pitch time', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 })
     const result = generatePlan({
       sportConfig: sport,
@@ -395,17 +395,19 @@ describe('generatePlan (integration)', () => {
       matchCount: 1,
       changeKeeperMidPeriod: true,
     })
-    const swapSlot = result.slots.find((slot) => !!slot.midSwap)
-    expect(swapSlot?.midSwap).toBeTruthy()
-    const outgoing = swapSlot!.midSwap!.preGkId
-    const incoming = swapSlot!.gkId
+    expect(result.slots.map(s => [s.startMinute, s.endMinute])).toEqual([[0, 5], [5, 7.5], [7.5, 10], [10, 15]])
+    expect(result.slots.every(s => !s.midSwap)).toBe(true)
+    const before = result.slots[1]!
+    const after = result.slots[2]!
+    const outgoing = before.gkId
+    const incoming = after.gkId
     expect(outgoing).toBeTruthy()
     expect(incoming).toBeTruthy()
     expect(outgoing).not.toBe(incoming)
-    expect(swapSlot!.midSwap!.preBenchIds).toContain(incoming!)
-    expect(swapSlot!.benchIds).toContain(outgoing!)
-    expect(getPlayerPitchMinutesForSlot(swapSlot!, outgoing!)).toBe(2.5)
-    expect(getPlayerPitchMinutesForSlot(swapSlot!, incoming!)).toBe(2.5)
+    expect(before.benchIds).toContain(incoming!)
+    expect(after.benchIds).toContain(outgoing!)
+    expect(getPlayerPitchMinutesForSlot(before, outgoing!) + getPlayerPitchMinutesForSlot(after, outgoing!)).toBe(2.5)
+    expect(getPlayerPitchMinutesForSlot(before, incoming!) + getPlayerPitchMinutesForSlot(after, incoming!)).toBe(2.5)
   })
 
   it('pinned keeper on odd mid-swap segment is prepared from bench before entering', () => {
@@ -418,15 +420,16 @@ describe('generatePlan (integration)', () => {
       changeKeeperMidPeriod: true,
       pins: {
         1: { gkId: 'p1' },
-        2: { gkId: 'p6' },
+        3: { gkId: 'p6' },
       },
     })
 
-    const slot = result.slots[2]!
+    const slot = result.slots[3]!
     expect(slot.gkId).toBe('p6')
-    expect(slot.midSwap).toBeTruthy()
-    expect(slot.midSwap!.preBenchIds).toContain('p6')
-    expect(slot.midSwap!.preGkId).toBe('p1')
+    expect(slot.startMinute).toBe(10)
+    expect(slot.midSwap).toBeUndefined()
+    expect(result.slots[2]!.benchIds).toContain('p6')
+    expect(result.slots[2]!.gkId).toBe('p1')
     expect(slot.benchIds).toContain('p1')
   })
 
