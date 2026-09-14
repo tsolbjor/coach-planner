@@ -107,8 +107,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
   let lastKeeperId: string | null = null
   let mustPlayNextBoundary = new Set<string>()
-  let mustBenchNextBoundary = new Set<string>()
-  let mustBenchNextBoundarySegmentIndex: number | null = null
   let rotationCursor = 0
 
   for (const [, matchSegments] of segmentsByMatch.entries()) {
@@ -116,8 +114,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
     // Reset hard per-match bench caps, but preserve broader fairness signals.
     consecBenchCount.clear()
-    mustBenchNextBoundary = new Set()
-    mustBenchNextBoundarySegmentIndex = null
 
     const segsPerPeriod = new Map<number, Segment[]>()
     for (const s of matchSegments) {
@@ -133,7 +129,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
     for (let matchSegIndex = 0; matchSegIndex < matchSegments.length; matchSegIndex++) {
       const seg = matchSegments[matchSegIndex]!
-      const nextSeg = matchSegments[matchSegIndex + 1] ?? null
       const newPeriod = seg.periodIndex !== prevPeriodIndex
       const isPeriodStart = newPeriod
       const pin = pins[seg.segmentIndex] ?? {}
@@ -153,17 +148,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       const active = players.filter((p) => !absentSet.has(p.id))
       const activeIds = new Set(active.map((p) => p.id))
       const segBenchSpots = Math.max(0, active.length - sportConfig.totalOnField)
-      if (
-        mustBenchNextBoundarySegmentIndex !== null &&
-        mustBenchNextBoundarySegmentIndex < seg.segmentIndex
-      ) {
-        mustBenchNextBoundary = new Set()
-        mustBenchNextBoundarySegmentIndex = null
-      }
-      const boundaryBenchCarryOverIds =
-        mustBenchNextBoundarySegmentIndex === seg.segmentIndex
-          ? new Set([...mustBenchNextBoundary].filter((id) => activeIds.has(id)))
-          : new Set<string>()
       const boundaryCarryOverFieldIds = isPeriodStart
         ? new Set([...mustPlayNextBoundary].filter((id) => activeIds.has(id)))
         : new Set<string>()
@@ -180,7 +164,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, players.length)
       }
 
-      const noPinOverride = pin.gkId === undefined && !pin.benchIds && !pin.fieldIds
+      const hasBenchPin = (pin.benchIds?.length ?? 0) > 0
+      const hasFieldPin = (pin.fieldIds?.length ?? 0) > 0
+      const noPinOverride = pin.gkId === undefined && !hasBenchPin && !hasFieldPin
 
       const benchArgs = {
         active,
@@ -201,27 +187,68 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         warnings,
       }
 
-      if (isMidSegmentSwap && prevGkId && activeIds.has(prevGkId) && noPinOverride) {
+      const pinnedMidSwapKeeperCandidate =
+        isMidSegmentSwap &&
+        prevGkId &&
+        activeIds.has(prevGkId) &&
+        !hasBenchPin &&
+        !hasFieldPin &&
+        pin.gkId &&
+        pin.gkId !== prevGkId &&
+        activeIds.has(pin.gkId) &&
+        isKeeperEligible(playerById.get(pin.gkId) ?? ({} as Player))
+          ? pin.gkId
+          : null
+
+      if (
+        isMidSegmentSwap &&
+        prevGkId &&
+        activeIds.has(prevGkId) &&
+        (noPinOverride || pinnedMidSwapKeeperCandidate)
+      ) {
         preBenchForMidSwap = pickBench({
           ...benchArgs,
           forcedFieldIds: new Set([prevGkId, ...boundaryCarryOverFieldIds]),
         })
-        const benchKeeperCandidates = preBenchForMidSwap
-          .map((id) => playerById.get(id))
-          .filter((p): p is Player => !!p && isKeeperEligible(p))
-          .sort(keeperCmp)
-        if (benchKeeperCandidates.length > 0) {
-          gkId = benchKeeperCandidates[0]!.id
-          midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
-          bench = preBenchForMidSwap.filter((id) => id !== gkId)
-          bench.push(prevGkId)
-        } else {
-          gkId = prevGkId
-          bench = preBenchForMidSwap
-          warnings.push({
-            kind: 'keeper-unavailable',
-            message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+        if (pinnedMidSwapKeeperCandidate) {
+          preBenchForMidSwap = ensureBenchContains({
+            bench: preBenchForMidSwap,
+            requiredIds: [pinnedMidSwapKeeperCandidate],
+            benchSpots: segBenchSpots,
+            activeIds,
+            excludedIds: new Set([prevGkId]),
           })
+          if (preBenchForMidSwap.includes(pinnedMidSwapKeeperCandidate)) {
+            gkId = pinnedMidSwapKeeperCandidate
+            midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
+            bench = preBenchForMidSwap.filter((id) => id !== gkId)
+            bench.push(prevGkId)
+          } else {
+            gkId = prevGkId
+            bench = preBenchForMidSwap
+            warnings.push({
+              kind: 'lock-conflict',
+              message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} could not prepare the pinned keeper on bench for a mid-segment swap.`,
+            })
+          }
+        } else {
+          const benchKeeperCandidates = preBenchForMidSwap
+            .map((id) => playerById.get(id))
+            .filter((p): p is Player => !!p && isKeeperEligible(p))
+            .sort(keeperCmp)
+          if (benchKeeperCandidates.length > 0) {
+            gkId = benchKeeperCandidates[0]!.id
+            midPeriodSwapApplied = { incoming: gkId, outgoing: prevGkId }
+            bench = preBenchForMidSwap.filter((id) => id !== gkId)
+            bench.push(prevGkId)
+          } else {
+            gkId = prevGkId
+            bench = preBenchForMidSwap
+            warnings.push({
+              kind: 'keeper-unavailable',
+              message: `Keeper mid-period swap skipped at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1}; no bench keeper was available.`,
+            })
+          }
         }
       } else {
         if (pin.gkId !== undefined) {
@@ -286,12 +313,12 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           }
         }
 
-        if (pin.benchIds) {
+        if (hasBenchPin) {
           bench = [...pin.benchIds].filter((id) => activeIds.has(id))
         } else if (midPeriodSwapApplied) {
           bench = [...prevBench].filter((id) => id !== midPeriodSwapApplied!.incoming && activeIds.has(id))
           bench.push(midPeriodSwapApplied.outgoing)
-        } else if (pin.fieldIds) {
+        } else if (hasFieldPin) {
           const fieldSet = new Set(pin.fieldIds.filter((id) => activeIds.has(id)))
           pinnedFieldIds = fieldSet
           bench = active
@@ -306,38 +333,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         }
       }
 
-      const plannedNextBoundaryKeeperId = pickPlannedBoundaryKeeper({
-        currentGkId: gkId,
-        currentActive: active,
-        currentPeriodIndex: seg.periodIndex,
-        nextSeg,
-        players,
-        pins,
-        isKeeperEligible,
-        playerById,
-        compareKeepers: keeperCmp,
-      })
-      if (plannedNextBoundaryKeeperId) {
-        bench = ensureBenchContains({
-          bench,
-          requiredIds: [plannedNextBoundaryKeeperId],
-          benchSpots: segBenchSpots,
-          activeIds,
-          excludedIds: new Set(gkId ? [gkId] : []),
-        })
-      }
-
-      if (boundaryBenchCarryOverIds.size > 0) {
-        bench = ensureBenchContains({
-          bench,
-          requiredIds: [...boundaryBenchCarryOverIds],
-          benchSpots: segBenchSpots,
-          activeIds,
-          excludedIds: new Set(gkId ? [gkId] : []),
-        })
-      }
-
-      if (prevGkId && gkId && prevGkId !== gkId && activeIds.has(prevGkId)) {
+      if (prevGkId && gkId && prevGkId !== gkId && activeIds.has(prevGkId) && !newPeriod) {
         bench = ensureBenchContains({
           bench,
           requiredIds: [prevGkId],
@@ -397,37 +393,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         })
         benchSet.clear()
         for (const id of bench) benchSet.add(id)
-      }
-
-      let plannedNextBoundaryKeeperPrepared = plannedNextBoundaryKeeperId === null
-      if (plannedNextBoundaryKeeperId && plannedNextBoundaryKeeperId !== gkId && !benchSet.has(plannedNextBoundaryKeeperId)) {
-        const enforcedBench = ensureBenchContains({
-          bench,
-          requiredIds: [plannedNextBoundaryKeeperId],
-          benchSpots: segBenchSpots,
-          activeIds,
-          excludedIds: new Set(gkId ? [gkId] : []),
-        })
-        if (enforcedBench.length !== bench.length || enforcedBench.some((id, i) => id !== bench[i])) {
-          if (pinnedFieldIds.has(plannedNextBoundaryKeeperId)) {
-            warnings.push({
-              kind: 'lock-conflict',
-              message: `Pin at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} was relaxed to keep the planned incoming keeper on bench.`,
-            })
-          }
-          bench = enforcedBench
-          benchSet.clear()
-          for (const id of bench) benchSet.add(id)
-        }
-      }
-      if (plannedNextBoundaryKeeperId && plannedNextBoundaryKeeperId !== gkId) {
-        plannedNextBoundaryKeeperPrepared = benchSet.has(plannedNextBoundaryKeeperId)
-        if (!plannedNextBoundaryKeeperPrepared) {
-          warnings.push({
-            kind: 'lock-conflict',
-            message: `Keeper transition at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} could not keep the incoming keeper on bench in the prior stint.`,
-          })
-        }
       }
 
       const field = active.filter((p) => p.id !== gkId && !benchSet.has(p.id)).map((p) => p.id)
@@ -504,13 +469,6 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
-      if (plannedNextBoundaryKeeperPrepared && plannedNextBoundaryKeeperId && gkId && nextSeg) {
-        mustBenchNextBoundary = new Set([gkId])
-        mustBenchNextBoundarySegmentIndex = nextSeg.segmentIndex
-      } else if (mustBenchNextBoundarySegmentIndex === seg.segmentIndex) {
-        mustBenchNextBoundary = new Set()
-        mustBenchNextBoundarySegmentIndex = null
-      }
       if (isPeriodEnd || isMatchEnd) {
         mustPlayNextBoundary = new Set(bench)
       } else if (isPeriodStart && mustPlayNextBoundary.size > 0) {
@@ -957,56 +915,6 @@ function addCredits(
   for (const id of fieldIds) {
     pitchCredit.set(id, (pitchCredit.get(id) ?? 0) + credit)
   }
-}
-
-function pickPlannedBoundaryKeeper(args: {
-  currentGkId: string | null
-  currentActive: Player[]
-  currentPeriodIndex: number
-  nextSeg: Segment | null
-  players: Player[]
-  pins: Record<number, SegmentPin>
-  isKeeperEligible: (p: Player) => boolean
-  playerById: Map<string, Player>
-  compareKeepers: (a: Player, b: Player) => number
-}): string | null {
-  const {
-    currentGkId,
-    currentActive,
-    currentPeriodIndex,
-    nextSeg,
-    players,
-    pins,
-    isKeeperEligible,
-    playerById,
-    compareKeepers,
-  } = args
-  if (!currentGkId || !nextSeg) return null
-
-  const nextPin = pins[nextSeg.segmentIndex] ?? {}
-  const nextAbsentSet = new Set([...(nextPin.absentIds ?? []), ...(nextPin.absentCreditedIds ?? [])])
-  const nextActiveIds = new Set(players.filter((p) => !nextAbsentSet.has(p.id)).map((p) => p.id))
-  if (!nextActiveIds.has(currentGkId)) return null
-
-  if (nextPin.gkId !== undefined) {
-    const pinnedKeeperId = nextPin.gkId
-    if (!pinnedKeeperId || pinnedKeeperId === currentGkId) return null
-    const pinnedKeeper = playerById.get(pinnedKeeperId)
-    if (!pinnedKeeper || !nextActiveIds.has(pinnedKeeperId) || !isKeeperEligible(pinnedKeeper)) return null
-    return currentActive.some((p) => p.id === pinnedKeeperId) ? pinnedKeeperId : null
-  }
-
-  const currentKeeper = playerById.get(currentGkId)
-  if (!currentKeeper || currentActive.length === 0) return null
-  if (!currentActive.some((p) => p.id === currentGkId)) return null
-  if (!currentActive.some((p) => p.id !== currentGkId && nextActiveIds.has(p.id) && isKeeperEligible(p))) return null
-  if (nextSeg.periodIndex === currentPeriodIndex) return null
-
-  const candidate = currentActive
-    .filter((p) => p.id !== currentGkId && nextActiveIds.has(p.id) && isKeeperEligible(p))
-    .sort(compareKeepers)[0]
-
-  return candidate && compareKeepers(candidate, currentKeeper) < 0 ? candidate.id : null
 }
 
 function ensureBenchContains(args: {
