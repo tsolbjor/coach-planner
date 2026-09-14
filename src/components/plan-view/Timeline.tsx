@@ -118,12 +118,12 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
 
   for (const [slotIndex, slot] of slots.entries()) {
     const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
+    const prevSlot = slots[slotIndex - 1]
+    const nextSlot = slots[slotIndex + 1]
 
     for (const player of players) {
       const stats = playerStats.get(player.id)
       if (!stats) continue
-      const prevSlot = slots[slotIndex - 1]
-      const nextSlot = slots[slotIndex + 1]
       const state = cellState(slot, player.id)
       const onField = isOnFieldState(state)
       const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
