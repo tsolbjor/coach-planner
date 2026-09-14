@@ -530,8 +530,8 @@ function pickBench(args: PickBenchArgs): string[] {
   }
 
   tryAddCandidates(preferredFieldCandidates, { respectL1Cap: true, respectKeeperCap: true })
-  tryAddCandidates(preferredFieldCandidates, { respectL1Cap: true, respectKeeperCap: false })
   tryAddCandidates(protectedRecentReturners, { respectL1Cap: true, respectKeeperCap: true })
+  tryAddCandidates(preferredFieldCandidates, { respectL1Cap: true, respectKeeperCap: false })
   tryAddCandidates(protectedRecentReturners, { respectL1Cap: true, respectKeeperCap: false })
   if (usedKeeperRelaxation) {
     warnings.push({
