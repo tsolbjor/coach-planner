@@ -101,6 +101,34 @@ describe('saved plan generation ownership', () => {
     expect(current(plan.id).slots).toEqual([])
     expect(current(plan.id).warnings?.some((w) => w.kind === 'low-player-count')).toBe(true)
   })
+
+  it('retains canonical pins through all-absent save, hydration, import, and restored presence', async () => {
+    const plan = useSavedPlansStore.getState().createMatch(base())
+    const store = useSavedPlansStore.getState()
+    const playerId = plan.slots[1]!.fieldIds[0]!
+    const pins = { 1: { requiredBenchIds: [playerId] } }
+    store.setSegmentPins(plan.id, pins)
+    store.updateMatch(plan.id, { absentPlayerIds: plan.roster.map((player) => player.id) })
+    expect(current(plan.id).slots).toEqual([])
+    expect(current(plan.id).pins).toEqual(pins)
+
+    store.saveMatch(JSON.parse(JSON.stringify(current(plan.id))) as MatchPlan)
+    expect(current(plan.id).pins).toEqual(pins)
+    await useSavedPlansStore.persist.rehydrate()
+    expect(current(plan.id).pins).toEqual(pins)
+    expect(current(plan.id).warnings?.some((warning) => warning.kind === 'pin-migration')).toBe(false)
+
+    const imported = JSON.parse(JSON.stringify(current(plan.id))) as MatchPlan
+    imported.id = 'imported-empty-plan'
+    store.saveMatch(imported)
+    expect(current(imported.id).pins).toEqual(pins)
+    for (const id of [plan.id, imported.id]) {
+      store.updateMatch(id, { absentPlayerIds: [] })
+      expect(current(id).pins).toEqual(pins)
+      expect(current(id).slots).toHaveLength(plan.slots.length)
+      expect(current(id).slots[1]!.benchIds).toContain(playerId)
+    }
+  })
 })
 
 describe('completed play and structural setup', () => {
@@ -285,7 +313,8 @@ describe('legacy pin migration', () => {
 
   it('clears ambiguous untimed saved overrides with a persistent diagnostic', () => {
     const plan = useSavedPlansStore.getState().createMatch(base())
-    useSavedPlansStore.getState().saveMatch({ ...plan, slots: [], pins: { 3: { gkId: 'p1' } } })
+    const { pinSchemaVersion: _version, ...legacy } = plan
+    useSavedPlansStore.getState().saveMatch({ ...legacy, slots: [], pins: { 3: { gkId: 'p1' } } })
     expect(current(plan.id).pins).toEqual({})
     expect(current(plan.id).warnings?.some((w) => w.kind === 'pin-migration')).toBe(true)
     useSavedPlansStore.getState().updateMatch(plan.id, { maxBenchSegments: 3 })

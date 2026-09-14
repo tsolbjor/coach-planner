@@ -49,6 +49,7 @@ function regenSlots(plan: MatchPlan): MatchPlan {
   })
   return {
     ...plan,
+    pinSchemaVersion: 1,
     slots: result.slots,
     warnings: [...(plan.warnings ?? []).filter((w) => w.kind === 'pin-migration'), ...result.warnings],
   }
@@ -165,7 +166,10 @@ function normalizeMatchPlan(plan: MatchPlan): MatchPlan {
     slots: slotsOk ? (plan.slots ?? []) : [],
     lockedSlots: plan.lockedSlots?.flatMap(getSlotIntervals),
   }
-  if (Object.keys(normalized.pins).length) {
+  // An empty generated schedule (for example, everyone absent) provides no
+  // timing evidence. Versioned pins already use canonical interval indices.
+  const canonicalPinsWithoutSlots = normalized.pinSchemaVersion === 1 && normalized.slots.length === 0
+  if (Object.keys(normalized.pins).length && !canonicalPinsWithoutSlots) {
     let segments: ReturnType<typeof buildSegments> = []
     try {
       segments = buildSegments(normalized.sportConfig, normalized.benchStintMinutes, normalized.matchCount, normalized.changeKeeperMidPeriod)

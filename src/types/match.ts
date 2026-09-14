@@ -78,6 +78,8 @@ export interface MatchPlan {
   absentPlayerIds: string[]
   /** segmentIndex → user override. Solver respects these and auto-fills the rest. */
   pins: Record<number, SegmentPin>
+  /** Version 1 pins use canonical interval indices, even when no slots can be generated. */
+  pinSchemaVersion?: 1
   /** When true, swap keeper with a benched player at the period midpoint */
   changeKeeperMidPeriod: boolean
   /** Continuous bench limit in original substitution intervals (midpoint splits do not count twice). */
