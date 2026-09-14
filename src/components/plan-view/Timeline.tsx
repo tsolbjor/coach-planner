@@ -98,6 +98,11 @@ function finalizeRun(stats: MutablePlayerStats) {
   stats.currentRunTouchesMatchEnd = false
 }
 
+/**
+ * Mid-swap timestamps are stored in absolute match minutes, so phase durations
+ * are derived against the slot start/end minutes here. Zero-length phases are
+ * ignored to avoid inventing extra transition boundaries.
+ */
 function slotPhases(slot: TimeSlot) {
   const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
   if (!slot.midSwap) return [{ matchIndex: slot.matchIndex, duration: slotMinutes, phase: 'post' as const }]
