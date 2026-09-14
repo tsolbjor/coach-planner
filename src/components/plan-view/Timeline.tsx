@@ -130,7 +130,10 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
       const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
       const sameMatch = stats.previousState !== null && stats.previousMatchIndex === slot.matchIndex
 
-      if (!sameMatch) finalizeRun(stats)
+      if (!sameMatch) {
+        if (stats.currentOnFieldRun > 0) stats.currentRunTouchesMatchEnd = true
+        finalizeRun(stats)
+      }
 
       if (isBenchState(state) && (!sameMatch || !wasBench)) {
         stats.benchStints += 1
