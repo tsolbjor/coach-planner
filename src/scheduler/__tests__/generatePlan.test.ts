@@ -315,6 +315,24 @@ describe('generatePlan (integration)', () => {
     expect(result.slots[2]!.benchIds).toEqual(['p1'])
   })
 
+  it('keeps the planned incoming keeper on the prior bench even if that segment pinned them on field', () => {
+    const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 10 })
+    const players: Player[] = makePlayers(7)
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+      pins: {
+        1: { gkId: 'p2' },
+        0: { fieldIds: ['p2', 'p3', 'p4', 'p5'] },
+      },
+    })
+
+    expect(result.slots[0]!.benchIds).toContain('p2')
+    expect(result.slots[1]!.gkId).toBe('p2')
+  })
+
   it('odd mid-segment keeper swap splits pitch time inside the swap segment', () => {
     const sport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 })
     const result = generatePlan({
