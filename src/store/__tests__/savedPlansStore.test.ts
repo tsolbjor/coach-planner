@@ -4,6 +4,7 @@ import * as scheduler from '../../scheduler'
 import { makeFiveASide, makePlayers } from '../../scheduler/__tests__/fixtures'
 import { useSavedPlansStore } from '../savedPlansStore'
 import { buildSportConfigFromRows, rowsFromSportConfig } from '../../components/plan-modals/positionRows'
+import { getSlotIntervals } from '../../utils/slotIntervals'
 
 vi.hoisted(() => {
   const values = new Map<string, string>()
@@ -114,11 +115,16 @@ describe('completed play and structural setup', () => {
     expect(current(plan.id).slots.slice(0, 2)).toEqual(prefix)
     store.setSegmentPin(plan.id, 0, { gkId: 'not-a-player' })
     expect(current(plan.id).pins[0]).toBeUndefined()
+    store.updateMatch(plan.id, { pins: { 0: { gkId: 'not-a-player' } } })
+    expect(current(plan.id).pins[0]).toBeUndefined()
     expect(current(plan.id).slots.slice(0, 2)).toEqual(prefix)
     store.clearAllPins(plan.id)
     expect(current(plan.id).slots.slice(0, 2)).toEqual(prefix)
     await useSavedPlansStore.persist.rehydrate()
     expect(current(plan.id).lockedSlots).toEqual(prefix)
+    store.saveMatch({ ...current(plan.id), lockedSlots: [] })
+    expect(current(plan.id).lockedSlots).toEqual(prefix)
+    expect(current(plan.id).slots.slice(0, 2)).toEqual(prefix)
     expect(current(plan.id).slots.slice(0, 2)).toEqual(prefix)
     store.updateMatch(plan.id, { benchStintMinutes: 10, pins: {}, lockedSlots: [] })
     expect(current(plan.id).benchStintMinutes).toBe(5)
@@ -168,6 +174,71 @@ describe('completed play and structural setup', () => {
 })
 
 describe('legacy pin migration', () => {
+  it('remaps historical tenths-rounded endpoints to unrounded canonical midpoint intervals', () => {
+    const plan = useSavedPlansStore.getState().createMatch(base({
+      sportConfig: makeFiveASide({ periodCount: 1, periodDurationMinutes: 20 }),
+      benchStintMinutes: 6,
+    }))
+    useSavedPlansStore.getState().saveMatch({
+      ...plan,
+      changeKeeperMidPeriod: true,
+      slots: plan.slots.map((slot) => ({
+        ...slot,
+        startMinute: Math.round(slot.startMinute * 10) / 10,
+        endMinute: Math.round(slot.endMinute * 10) / 10,
+      })),
+      pins: { 1: { absentIds: ['p7'] }, 2: { gkId: 'p1' } },
+    })
+    expect(current(plan.id).pins).toEqual({
+      1: { absentIds: ['p7'] }, 2: { absentIds: ['p7'] }, 3: { gkId: 'p1' },
+    })
+    expect(current(plan.id).warnings?.some((w) => w.kind === 'pin-migration')).toBe(false)
+  })
+
+  it('tolerates floating-point timing noise without dropping a saved override', () => {
+    const plan = useSavedPlansStore.getState().createMatch(base())
+    useSavedPlansStore.getState().saveMatch({
+      ...plan,
+      slots: plan.slots.map((slot) => ({
+        ...slot, startMinute: slot.startMinute + 1e-10, endMinute: slot.endMinute + 1e-10,
+      })),
+      pins: { 1: { gkId: 'p1' } },
+    })
+    expect(current(plan.id).pins[1]).toEqual({ gkId: 'p1' })
+    expect(current(plan.id).warnings?.some((w) => w.kind === 'pin-migration')).toBe(false)
+  })
+
+  it('expands legacy locked keeper swaps into protected canonical history', () => {
+    const legacy = useSavedPlansStore.getState().createMatch(base({
+      sportConfig: makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 }),
+    }))
+    const slot = legacy.slots[1]!
+    const legacySwap = {
+      ...slot,
+      midSwap: {
+        atMinute: 7.5,
+        preGkId: slot.gkId,
+        preFieldIds: slot.fieldIds,
+        preBenchIds: slot.benchIds,
+        prePositions: slot.positions,
+      },
+    }
+    const history = [legacy.slots[0]!, legacySwap]
+    useSavedPlansStore.getState().saveMatch({
+      ...legacy,
+      changeKeeperMidPeriod: true,
+      lockedSlots: history,
+      slots: [legacy.slots[0]!, legacySwap, legacy.slots[2]!],
+      pins: { 1: { gkId: slot.gkId } },
+    })
+    const saved = current(legacy.id)
+    expect(saved.lockedSlots).toEqual(history.flatMap(getSlotIntervals))
+    expect(saved.slots.slice(0, 3)).toEqual(saved.lockedSlots)
+    expect(saved.slots.every((s) => !s.midSwap)).toBe(true)
+    expect(saved.pins[1]).toEqual({ gkId: slot.gkId })
+    expect(saved.pins[2]).toEqual({ gkId: slot.gkId })
+  })
+
   it('remaps later pins by timing and duplicates overrides onto split keeper intervals', () => {
     const legacy = useSavedPlansStore.getState().createMatch(base({
       sportConfig: makeFiveASide({ periodCount: 1, periodDurationMinutes: 15 }),
@@ -190,5 +261,13 @@ describe('legacy pin migration', () => {
     expect(current(plan.id).warnings?.some((w) => w.kind === 'pin-migration')).toBe(true)
     useSavedPlansStore.getState().updateMatch(plan.id, { maxBenchSegments: 3 })
     expect(current(plan.id).warnings?.some((w) => w.kind === 'pin-migration')).toBe(true)
+  })
+
+  it('reports invalid imported timing instead of failing hydration when pins exist', () => {
+    const plan = useSavedPlansStore.getState().createMatch(base())
+    expect(() => useSavedPlansStore.getState().saveMatch({
+      ...plan, benchStintMinutes: 0, pins: { 1: { gkId: 'p1' } },
+    })).not.toThrow()
+    expect(current(plan.id).warnings?.some((w) => w.kind === 'invalid-input')).toBe(true)
   })
 })

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Player, SegmentPin, TimeSlot } from '../../types'
 import { Button } from '../common/Button'
+import { formatMinute } from '../../utils/slotIntervals'
 
 interface SegmentEditorProps {
   slots: TimeSlot[]
@@ -262,7 +263,7 @@ export function SegmentEditor({
         <div className="flex items-start justify-between gap-2 border-b border-slate-100 px-4 py-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-wider text-blue-600">
-              Segment · {Math.floor(slot.startMinute)}'–{Math.ceil(slot.endMinute)}'
+              Segment · {formatMinute(slot.startMinute)}–{formatMinute(slot.endMinute)}
             </p>
             <h3 className="mt-0.5 text-base font-bold text-slate-900">
               {selected?.name ?? 'Unknown'}{' '}

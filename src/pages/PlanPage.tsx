@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { buildShareUrl } from '../utils/shareUrl'
 import { getBoundaryTransition } from '../utils/slotTransitions'
+import { formatMinute } from '../utils/slotIntervals'
 import { useSavedPlansStore } from '../store'
 import { AppShell } from '../components/common/AppShell'
 import { Button } from '../components/common/Button'
@@ -82,6 +83,7 @@ export function PlanPage() {
   const lockedCount = plan.lockedSlots?.length ?? 0
   const playerById = new Map(plan.roster.map((p) => [p.id, p]))
   const pinCount = Object.keys(plan.pins).length
+  const editablePinCount = Object.keys(plan.pins).filter((index) => Number(index) >= lockedCount).length
   const activeEntryIndex =
     focusSegmentIndex !== null
       ? focusSlotEntries.findIndex((entry) => entry.index === focusSegmentIndex)
@@ -160,9 +162,9 @@ export function PlanPage() {
               <Button size="sm" variant="secondary" onClick={() => setSetupOpen(true)}>
                 Setup
               </Button>
-              {pinCount > 0 && (
+              {editablePinCount > 0 && (
                 <Button size="sm" variant="secondary" onClick={() => clearAllPins(id)}>
-                  Clear {pinCount} pin{pinCount === 1 ? '' : 's'}
+                  Clear {editablePinCount} pin{editablePinCount === 1 ? '' : 's'}
                 </Button>
               )}
               <Button size="sm" variant="secondary" onClick={handleShare}>
@@ -286,7 +288,7 @@ export function PlanPage() {
                     >
                       {focusSlotEntries.map((entry) => (
                         <option key={entry.slot.id} value={entry.index}>
-                          {Math.floor(entry.slot.startMinute)}'–{Math.ceil(entry.slot.endMinute)}'
+                          {formatMinute(entry.slot.startMinute)}–{formatMinute(entry.slot.endMinute)}
                         </option>
                       ))}
                     </select>
@@ -311,7 +313,7 @@ export function PlanPage() {
                         </p>
                         <p className="mt-1 text-sm font-semibold text-slate-800">
                           Match {activeEntry.slot.matchIndex + 1} · Period {activeEntry.slot.periodIndex + 1} ·{' '}
-                          {Math.floor(activeEntry.slot.startMinute)}'–{Math.ceil(activeEntry.slot.endMinute)}'
+                          {formatMinute(activeEntry.slot.startMinute)}–{formatMinute(activeEntry.slot.endMinute)}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
                           {activeEntry.index < lockedCount
@@ -327,7 +329,7 @@ export function PlanPage() {
                         {nextEntry ? (
                           <div className="mt-1 space-y-1">
                             <p className="text-sm font-semibold text-amber-900">
-                              At {Math.floor(nextEntry.slot.startMinute)}'
+                              At {formatMinute(nextEntry.slot.startMinute)}
                             </p>
                             <p className="text-xs text-amber-800">
                               Off:{' '}
@@ -389,7 +391,9 @@ export function PlanPage() {
           <div className="space-y-8">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
-                <p className="text-xs font-semibold text-slate-500">Player timeline · click any cell to edit</p>
+                <p className="text-xs font-semibold text-slate-500">
+                  Player timeline · {lockedCount ? 'completed play is locked; click a remaining interval to edit' : 'click any cell to edit'}
+                </p>
               </div>
               <div className="p-2 lg:p-4">
                 <Timeline
@@ -458,26 +462,13 @@ export function PlanPage() {
                                 className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm"
                               >
                                 <p className="text-xs font-semibold text-slate-500 mb-2">
-                                  {Math.floor(slot.startMinute)}'–{Math.ceil(slot.endMinute)}'
+                                  {formatMinute(slot.startMinute)}–{formatMinute(slot.endMinute)}
                                 </p>
                                 <div className="space-y-1.5">
-                                  {slot.midSwap && (
-                                    <p className="text-[10px] font-semibold uppercase text-amber-700">
-                                      Mid-segment keeper swap @ {Math.floor(slot.midSwap.atMinute)}'
-                                    </p>
-                                  )}
                                   <div>
                                     <span className="text-[10px] font-semibold uppercase text-yellow-700 mr-2">GK</span>
                                     <span className="text-xs font-medium text-slate-700">
-                                      {slot.midSwap ? (
-                                        <>
-                                          {playerById.get(slot.midSwap.preGkId ?? '')?.name ?? '—'}{' '}
-                                          <span className="text-slate-400">→</span>{' '}
-                                          {gkPlayer?.name ?? '—'}
-                                        </>
-                                      ) : (
-                                        gkPlayer?.name ?? <span className="text-red-400">—</span>
-                                      )}
+                                      {gkPlayer?.name ?? <span className="text-red-400">—</span>}
                                     </span>
                                   </div>
                                   <div>

@@ -130,7 +130,8 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       }
       const fieldIds = field.map((p) => p.id)
       const benchIds = active.filter((p) => p.id !== gkId && !fieldIds.includes(p.id)).map((p) => p.id)
-      if (c.requiredBenchIds.some((id) => !benchIds.includes(id)) ||
+      if ((c.fieldIds && !sameIds(fieldIds, c.fieldIds)) ||
+        c.requiredBenchIds.some((id) => !benchIds.includes(id)) ||
         (c.benchIds && !sameIds(benchIds, c.benchIds))) return null
       return { gkId, fieldIds, benchIds }
     }
@@ -267,10 +268,21 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
     // Final interval validator: diagnostics describe actual output, including
     // overrides and historical play, rather than only attempted repairs.
     const currentActive = locked ? players.filter((p) => !locked.absentIds.includes(p.id)) : active
+    const currentActiveCount = locked ? new Set([
+      ...locked.fieldIds, ...locked.benchIds, ...(locked.gkId ? [locked.gkId] : []),
+    ]).size : currentActive.length
     const bench = new Set(chosen.benchIds)
+    if (locked && ((pin.gkId !== undefined && pin.gkId !== locked.gkId) ||
+      (pin.fieldIds && !sameIds(pin.fieldIds, locked.fieldIds)) ||
+      (pin.benchIds && !sameIds(pin.benchIds, locked.benchIds)) ||
+      pin.requiredFieldIds?.some((id) => !locked.fieldIds.includes(id)) ||
+      pin.requiredBenchIds?.some((id) => !locked.benchIds.includes(id)) ||
+      [...absent].some((id) => !locked.absentIds.includes(id)))) {
+      warn('lock-conflict', 'Pins conflict with completed play; immutable historical interval was retained.')
+    }
     if (coverage(chosen) < sport.totalOnField) warn('position-unavailable',
       `${sport.totalOnField - coverage(chosen)} lineup position(s) unfilled; no eligible full lineup under the accepted constraints.`)
-    if (currentActive.length < sport.totalOnField) warn('low-player-count', `Only ${currentActive.length} active players.`)
+    if (currentActiveCount < sport.totalOnField) warn('low-player-count', `Only ${currentActiveCount} active players.`)
     if (keeperSlot && !chosen.gkId) warn('keeper-unavailable', 'No eligible keeper could be assigned.')
     for (const id of chosen.benchIds) {
       if (stats.has(id) && get(id).benchStreak + duration > cap + EPSILON) warn('bench-rotation-impossible',
@@ -286,13 +298,15 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       warn('substitution-limit', `${subs} substitutions; requested range ${minSubsPerSegment}–${maxSubsPerSegment}. Eligibility, pins and rest take priority.`)
     }
     if (chosen.benchIds.filter((id) => normalizePlayerLevel(byId.get(id)?.level) === 1).length > 1) {
-      warn('l1-cap-infeasible', 'More than one top-level player is on the bench.')
+      warn('l1-cap-infeasible', 'More than one protected (L1) player is on the bench.')
     }
     if (seg.keeperBoundary && keeperSlot && previous) {
       if (chosen.gkId === previous.gkId) warn('keeper-unavailable', 'Keeper mid-period swap skipped: no compatible alternative under higher-priority constraints.')
       else if (!chosen.gkId || !oldBench.has(chosen.gkId)) warn('bench-rotation-impossible',
         'Incoming midpoint keeper was not on the prior bench; eligibility or pins required a different exchange.')
-      if (!regular && score(chosen)[5]! > 0) warn('substitution-limit',
+      const extraBenchChanges = chosen.benchIds.some((id) => !oldBench.has(id) && id !== previous!.gkId) ||
+        [...oldBench].some((id) => currentActive.some((p) => p.id === id) && !bench.has(id) && id !== chosen.gkId)
+      if (!regular && extraBenchChanges) warn('substitution-limit',
         'Extra bench changes at the keeper-only midpoint were necessary for eligibility, pins or rest.')
     }
     result.gkBySegment[seg.segmentIndex] = chosen.gkId

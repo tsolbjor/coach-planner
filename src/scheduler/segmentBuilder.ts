@@ -11,7 +11,8 @@ export function buildSegments(
   if (!Number.isFinite(benchStintMinutes) || benchStintMinutes <= 0 ||
       !Number.isFinite(sport.periodDurationMinutes) || sport.periodDurationMinutes <= 0 ||
       !Number.isSafeInteger(sport.periodCount) || sport.periodCount <= 0 ||
-      !Number.isSafeInteger(matchCount) || matchCount <= 0) {
+      !Number.isSafeInteger(matchCount) || matchCount <= 0 ||
+      !Number.isFinite(sport.periodDurationMinutes * sport.periodCount)) {
     throw new RangeError('Match count, period count and durations must be finite and positive; counts must be integers.')
   }
   const count = Math.max(1, Math.round(sport.periodDurationMinutes / benchStintMinutes))

@@ -4,6 +4,7 @@ import { nanoid } from 'nanoid'
 import { normalizePlayerLevel, type SavedItem, type MatchPlan, type SegmentPin, type TournamentPlan, type Player } from '../types'
 import { generatePlan } from '../scheduler'
 import { buildSegments } from '../scheduler/segmentBuilder'
+import { getSlotIntervals } from '../utils/slotIntervals'
 
 function regenSlots(plan: MatchPlan): MatchPlan {
   const active = plan.roster.filter((p) => !plan.absentPlayerIds.includes(p.id))
@@ -59,6 +60,14 @@ function generationKey(plan: MatchPlan): string {
       lineupSlots: plan.sportConfig.lineupSlots.map(({ label: _label, ...s }) => s),
     },
   })
+}
+
+function preserveLockedPins(plan: MatchPlan, pins: Record<number, SegmentPin>): Record<number, SegmentPin> {
+  const lockedCount = plan.lockedSlots?.length ?? 0
+  return {
+    ...Object.fromEntries(Object.entries(pins).filter(([index]) => Number(index) >= lockedCount)),
+    ...Object.fromEntries(Object.entries(plan.pins).filter(([index]) => Number(index) < lockedCount)),
+  }
 }
 
 interface SavedPlansState {
@@ -127,17 +136,35 @@ function normalizeMatchPlan(plan: MatchPlan): MatchPlan {
     minSubsPerSegment: plan.minSubsPerSegment ?? 0,
     maxSubsPerSegment: plan.maxSubsPerSegment ?? Math.max(1, benchSize),
     slots: slotsOk ? (plan.slots ?? []) : [],
+    lockedSlots: plan.lockedSlots?.flatMap(getSlotIntervals),
   }
   if (Object.keys(normalized.pins).length) {
-    const segments = buildSegments(normalized.sportConfig, normalized.benchStintMinutes, normalized.matchCount, normalized.changeKeeperMidPeriod)
+    let segments: ReturnType<typeof buildSegments> = []
+    try {
+      segments = buildSegments(normalized.sportConfig, normalized.benchStintMinutes, normalized.matchCount, normalized.changeKeeperMidPeriod)
+    } catch {
+      // Generation reports invalid configuration; overrides without safe timing
+      // cannot be carried into a different interval.
+    }
     const remapped: Record<number, SegmentPin> = {}
     let lostPin = false
+    const timingTolerance = 1e-8
     for (const [index, pin] of Object.entries(normalized.pins)) {
       const old = normalized.slots[Number(index)]
-      const targets = old ? segments.filter((s) => s.matchIndex === old.matchIndex &&
-        s.periodIndex === old.periodIndex && s.startMinute >= old.startMinute && s.endMinute <= old.endMinute) : []
-      if (!old || !targets.length || targets[0]!.startMinute !== old.startMinute ||
-        targets[targets.length - 1]!.endMinute !== old.endMinute) {
+      // Old saved schedules rounded endpoints to tenths of a minute. Prefer
+      // exact timing, then allow that legacy rounding only for rounded inputs.
+      const roundedLegacyTimes = old && [old.startMinute, old.endMinute].every(
+        (minute) => Math.abs(minute * 10 - Math.round(minute * 10)) < timingTolerance,
+      )
+      const tolerances = roundedLegacyTimes ? [timingTolerance, 0.051] : [timingTolerance]
+      const targets = old ? tolerances.map((tolerance) => {
+        const matches = segments.filter((s) => s.matchIndex === old.matchIndex &&
+          s.periodIndex === old.periodIndex && s.startMinute >= old.startMinute - tolerance &&
+          s.endMinute <= old.endMinute + tolerance)
+        return matches.length && Math.abs(matches[0]!.startMinute - old.startMinute) <= tolerance &&
+          Math.abs(matches[matches.length - 1]!.endMinute - old.endMinute) <= tolerance ? matches : []
+      }).find((matches) => matches.length) ?? [] : []
+      if (!targets.length) {
         lostPin = true
         continue
       }
@@ -187,8 +214,17 @@ export const useSavedPlansStore = create<SavedPlansState>()(
 
       saveMatch: (plan) =>
         set((s) => {
-          const normalizedPlan = normalizeMatchPlan(plan)
           const idx = s.items.findIndex((i) => i.kind === 'match' && i.plan.id === plan.id)
+          const existing = s.items[idx]
+          if (existing?.kind === 'match' && existing.plan.lockedSlots?.length) {
+            if (changesStructure(existing.plan, plan)) return {}
+            plan = {
+              ...plan,
+              lockedSlots: existing.plan.lockedSlots,
+              pins: preserveLockedPins(existing.plan, plan.pins),
+            }
+          }
+          const normalizedPlan = normalizeMatchPlan(plan)
           const item: SavedItem = { kind: 'match', plan: normalizedPlan }
           if (idx >= 0) {
             const items = [...s.items]
@@ -234,6 +270,7 @@ export const useSavedPlansStore = create<SavedPlansState>()(
               slots: plan.slots,
               warnings: plan.warnings,
               lockedSlots: plan.lockedSlots,
+              pins: preserveLockedPins(plan, updates.pins ?? plan.pins),
               roster: (updates.roster ?? plan.roster).map(normalizePlayer),
               updatedAt: new Date().toISOString(),
             }

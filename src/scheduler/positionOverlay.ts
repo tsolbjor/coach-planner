@@ -220,7 +220,7 @@ function assignWithContinuity(
     unfilled = outfieldSlots.filter((s) => !result[s.slotId])
   }
 
-  if (unfilled.length > 0 && outfieldPool.length >= outfieldSlots.length) {
+  if (unfilled.length > 0) {
     const fullMatch = maxMatch(outfieldSlots, outfieldPool, canPlayPosition, preferPlayerBySlot)
     for (const slot of outfieldSlots) result[slot.slotId] = fullMatch.get(slot.slotId) ?? null
   }

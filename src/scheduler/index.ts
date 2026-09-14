@@ -28,9 +28,12 @@ export function generatePlan(input: SchedulerInput): SchedulerOutput {
     }
     if (lockedSlots.some((slot, index) => {
       const seg = segments[index]
+      const members = [...slot.fieldIds, ...slot.benchIds, ...slot.absentIds, ...(slot.gkId ? [slot.gkId] : [])]
       return !seg || slot.matchIndex !== seg.matchIndex || slot.periodIndex !== seg.periodIndex ||
         Math.abs(slot.startMinute - seg.startMinute) > 1e-8 || Math.abs(slot.endMinute - seg.endMinute) > 1e-8 ||
         !Number.isFinite(slot.startMinute) || !Number.isFinite(slot.endMinute) ||
+        new Set(members).size !== members.length ||
+        slot.absentCreditedIds.some((id) => !slot.absentIds.includes(id)) ||
         (slot.midSwap && (!Number.isFinite(slot.midSwap.atMinute) ||
           slot.midSwap.atMinute <= slot.startMinute || slot.midSwap.atMinute >= slot.endMinute))
     })) throw new RangeError('Locked history must be an exact contiguous prefix of the configured intervals; timing changes are not allowed.')

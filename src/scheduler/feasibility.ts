@@ -60,7 +60,7 @@ export function checkFeasibility(input: FeasibilityInput): SchedulerWarning[] {
   if (l1Count > sportConfig.totalOnField + 1) {
     warnings.push({
       kind: 'l1-cap-infeasible',
-      message: `${l1Count} top-level players but only ${sportConfig.totalOnField} field slots — more than one will need to sit at once, violating the L1-on-bench cap.`,
+      message: `${l1Count} protected (L1) players but only ${sportConfig.totalOnField} field slots — more than one will need to sit at once, exceeding the protected-player bench limit.`,
     })
   }
 
@@ -91,8 +91,8 @@ export function checkFeasibility(input: FeasibilityInput): SchedulerWarning[] {
         })
       }
     }
-    const absentCount =
-      (pin.absentIds?.length ?? 0) + (pin.absentCreditedIds?.length ?? 0)
+    const absentCount = new Set([...(pin.absentIds ?? []), ...(pin.absentCreditedIds ?? [])]
+      .filter((id) => playerIds.has(id))).size
     if (absentCount > 0) {
       const active = players.length - absentCount
       if (active < sportConfig.totalOnField) {

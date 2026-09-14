@@ -7,7 +7,7 @@ const sections = [
     points: [
       'Validity comes first: only present, eligible players can fill positions. Each player has one role at a time. The planner seeks a full eligible lineup before optimizing rotation.',
       'Compatible coach edits come next. If an edit conflicts with availability, eligibility, or lineup capacity, the plan explains what could not be honored.',
-      'Maximum continuous rest is a preference, followed by rotation fairness and substitution-count and protected-player preferences. Completed play is kept unchanged.',
+      'Maximum continuous rest and returning benched players at period boundaries take priority over keeper cadence and keeper-time fairness, then substitution-count and protected-player preferences. Completed play is kept unchanged.',
       'Among rotation candidates, the longest uninterrupted playing time takes priority over equal total minutes. Equal minutes are a goal, not a guarantee; restricted positions and keeper duty can limit fairness.',
     ],
   },
@@ -54,7 +54,7 @@ const sections = [
       'Normally one keeper is designated per period. Availability, eligibility, or coach edits can require a change.',
       'Enable "Change keeper mid-period" in Setup to swap keeper midway through each period when a bench keeper is available.',
       'If the midpoint falls inside a regular substitution interval, it becomes a separate boundary. The incoming keeper prepares on the bench; the outgoing keeper rests when possible.',
-      'Keeper duty is spread across eligible players, using stint counts and actual keeper minutes, while preserving a feasible outfield lineup.',
+      'Keeper duty is spread across eligible players, preferring fewer actual keeper minutes, while preserving a feasible outfield lineup.',
     ],
   },
   {

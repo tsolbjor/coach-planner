@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { SegmentPin, TimeSlot } from '../../../types'
-import { applyAbsence, applyPresence, buildSwapPinUpdates } from '../SegmentEditor'
+import { applyAbsence, applyPresence, buildSwapPinUpdates, SegmentEditor } from '../SegmentEditor'
 
 function makeSlot(overrides: Partial<TimeSlot> = {}): TimeSlot {
   return {
@@ -20,6 +22,20 @@ function makeSlot(overrides: Partial<TimeSlot> = {}): TimeSlot {
 }
 
 describe('buildSwapPinUpdates', () => {
+  it('shows exact fractional interval boundaries in the editor', () => {
+    const html = renderToStaticMarkup(createElement(SegmentEditor, {
+      slots: [makeSlot({ startMinute: 5, endMinute: 7.5 })],
+      segmentIndex: 0,
+      selectedPlayerId: 'p2',
+      players: [],
+      pins: {},
+      totalOnField: 5,
+      onClose: () => {},
+      onSetPins: () => {},
+    }))
+    expect(html).toContain('5&#x27;–7.5&#x27;')
+  })
+
   it('keeps a subbed-off player benched into the next stint in in-game mode', () => {
     const slots = [
       makeSlot(),
