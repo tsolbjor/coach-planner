@@ -399,6 +399,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         for (const id of bench) benchSet.add(id)
       }
 
+      let plannedNextBoundaryKeeperPrepared = plannedNextBoundaryKeeperId === null
       if (plannedNextBoundaryKeeperId && plannedNextBoundaryKeeperId !== gkId && !benchSet.has(plannedNextBoundaryKeeperId)) {
         const enforcedBench = ensureBenchContains({
           bench,
@@ -417,6 +418,15 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           bench = enforcedBench
           benchSet.clear()
           for (const id of bench) benchSet.add(id)
+        }
+      }
+      if (plannedNextBoundaryKeeperId && plannedNextBoundaryKeeperId !== gkId) {
+        plannedNextBoundaryKeeperPrepared = benchSet.has(plannedNextBoundaryKeeperId)
+        if (!plannedNextBoundaryKeeperPrepared) {
+          warnings.push({
+            kind: 'lock-conflict',
+            message: `Keeper transition at match ${seg.matchIndex + 1} period ${seg.periodIndex + 1} could not keep the incoming keeper on bench in the prior stint.`,
+          })
         }
       }
 
@@ -494,7 +504,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       prevBench = benchSet
       prevPeriodIndex = seg.periodIndex
       prevGkId = gkId
-      if (plannedNextBoundaryKeeperId && gkId && nextSeg) {
+      if (plannedNextBoundaryKeeperPrepared && plannedNextBoundaryKeeperId && gkId && nextSeg) {
         mustBenchNextBoundary = new Set([gkId])
         mustBenchNextBoundarySegmentIndex = nextSeg.segmentIndex
       } else if (mustBenchNextBoundarySegmentIndex === seg.segmentIndex) {
