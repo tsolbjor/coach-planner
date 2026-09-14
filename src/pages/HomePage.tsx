@@ -10,6 +10,7 @@ import { Card } from '../components/common/Card'
 import { NumberStepper } from '../components/common/NumberStepper'
 import { buildTopFlowItems } from '../components/common/TopFlowNav'
 import { ModalShell } from '../components/plan-modals/ModalShell'
+import { SubstitutionSettings } from '../components/setup/SubstitutionSettings'
 import {
   SPORT_PRESETS,
   buildSportConfigFromLineup,
@@ -109,7 +110,7 @@ function CreatePlanModal({
       matchCount,
       changeKeeperMidPeriod,
       maxBenchSegments,
-      minSubsPerSegment: Math.min(minSubsPerSegment, maxSubsPerSegment),
+      minSubsPerSegment: Math.min(minSubsPerSegment, maxSubsPerSegment, benchSize),
       maxSubsPerSegment: Math.min(maxSubsPerSegment, Math.max(1, benchSize)),
     })
   }
@@ -171,56 +172,25 @@ function CreatePlanModal({
             max={60}
             onChange={setPeriodDuration}
           />
-          <NumberStepper
-            label="Minutes on bench"
-            value={benchStintMinutes}
-            min={0.5}
-            max={periodDuration}
-            step={0.5}
-            suffix=" min"
-            onChange={setBenchStintMinutes}
-          />
-          <NumberStepper label="Matches" value={matchCount} min={1} max={10} onChange={setMatchCount} />
-          <NumberStepper
-            label="Max segments on bench"
-            value={maxBenchSegments}
-            min={1}
-            max={Math.max(1, periodCount * Math.max(1, Math.round(periodDuration / benchStintMinutes)))}
-            onChange={setMaxBenchSegments}
-          />
-          <NumberStepper
-            label="Min subs per segment"
-            value={minSubsPerSegment}
-            min={0}
-            max={Math.max(0, benchSize)}
-            onChange={setMinSubsPerSegment}
-          />
-          <NumberStepper
-            label="Max subs per segment"
-            value={maxSubsPerSegment}
-            min={Math.max(1, minSubsPerSegment)}
-            max={Math.max(1, benchSize)}
-            onChange={setMaxSubsPerSegment}
-          />
-          <p className="text-xs text-slate-500">
-            The planner keeps the rotation moving when possible, while still preserving exact lineup counts.
-          </p>
-          <label className="flex items-start gap-3 cursor-pointer pt-1">
-            <input
-              type="checkbox"
-              checked={changeKeeperMidPeriod}
-              onChange={(e) => setChangeKeeperMidPeriod(e.target.checked)}
-              className="mt-1 h-4 w-4"
-            />
-            <div>
-              <p className="text-sm font-medium text-slate-700">Change keeper mid-period</p>
-              <p className="text-xs text-slate-500">
-                Swap keeper with a benched player midway through each period, while still spreading keeper turns across the full plan.
-              </p>
-            </div>
-          </label>
           <p className="text-xs text-slate-500">{benchSize} on bench.</p>
         </Card>
+
+        <SubstitutionSettings
+          sportConfig={{ ...baseConfig, periodCount, periodDurationMinutes: periodDuration }}
+          benchStintMinutes={Math.min(benchStintMinutes, periodDuration)}
+          matchCount={matchCount}
+          changeKeeperMidPeriod={changeKeeperMidPeriod}
+          maxBenchSegments={maxBenchSegments}
+          minSubsPerSegment={Math.min(minSubsPerSegment, benchSize)}
+          maxSubsPerSegment={Math.min(maxSubsPerSegment, Math.max(1, benchSize))}
+          benchSize={benchSize}
+          onBenchStintChange={setBenchStintMinutes}
+          onMatchCountChange={setMatchCount}
+          onChangeKeeperMidPeriodChange={setChangeKeeperMidPeriod}
+          onMaxBenchSegmentsChange={setMaxBenchSegments}
+          onMinSubsPerSegmentChange={setMinSubsPerSegment}
+          onMaxSubsPerSegmentChange={setMaxSubsPerSegment}
+        />
 
         <Card padding={false}>
           <button

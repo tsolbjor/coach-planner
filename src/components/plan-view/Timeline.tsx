@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import type { Player, SportConfig, TimeSlot } from '../../types'
 import { getSlotPitchMinutesByPlayer } from '../../utils/pitchTime'
 import { getBoundaryTransition } from '../../utils/slotTransitions'
+import { expandSlotEntries, formatMinute } from '../../utils/slotIntervals'
 
 interface TimelineProps {
   slots: TimeSlot[]
@@ -31,25 +32,10 @@ const stateGlyph: Record<CellState, string> = {
   unknown: '',
 }
 
-function fmtMin(m: number) {
-  return `${Math.floor(m)}'`
-}
-
 function cellState(slot: TimeSlot, playerId: string): CellState {
   if (slot.gkId === playerId) return 'gk'
   if (slot.fieldIds.includes(playerId)) return 'field'
   if (slot.benchIds.includes(playerId)) return 'bench'
-  if (slot.absentCreditedIds.includes(playerId)) return 'absent-credited'
-  if (slot.absentIds.includes(playerId)) return 'absent'
-  return 'unknown'
-}
-
-function preCellState(slot: TimeSlot, playerId: string): CellState {
-  const swap = slot.midSwap
-  if (!swap) return cellState(slot, playerId)
-  if (swap.preGkId === playerId) return 'gk'
-  if (swap.preFieldIds.includes(playerId)) return 'field'
-  if (swap.preBenchIds.includes(playerId)) return 'bench'
   if (slot.absentCreditedIds.includes(playerId)) return 'absent-credited'
   if (slot.absentIds.includes(playerId)) return 'absent'
   return 'unknown'
@@ -98,23 +84,6 @@ function finalizeRun(stats: MutablePlayerStats) {
   stats.currentRunTouchesMatchEnd = false
 }
 
-/**
- * Mid-swap timestamps are stored in absolute match minutes, so phase durations
- * are derived against the slot start/end minutes here. Zero-length phases are
- * ignored to avoid inventing extra transition boundaries.
- */
-function slotPhases(slot: TimeSlot) {
-  const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
-  if (!slot.midSwap) return [{ matchIndex: slot.matchIndex, duration: slotMinutes, phase: 'post' as const }]
-
-  const preDuration = Math.max(0, Math.min(slotMinutes, slot.midSwap.atMinute - slot.startMinute))
-  const postDuration = Math.max(0, slotMinutes - preDuration)
-  return [
-    { matchIndex: slot.matchIndex, duration: preDuration, phase: 'pre' as const },
-    { matchIndex: slot.matchIndex, duration: postDuration, phase: 'post' as const },
-  ].filter((entry) => entry.duration > 0)
-}
-
 export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
   const playerStats = new Map<string, MutablePlayerStats>(
     players.map((player) => [
@@ -134,61 +103,51 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
     ]),
   )
 
-  for (const [slotIndex, slot] of slots.entries()) {
-    const prevSlot = slots[slotIndex - 1]
-    const nextSlot = slots[slotIndex + 1]
-    const phases = slotPhases(slot)
+  const intervals = expandSlotEntries(slots).map((entry) => entry.slot)
+  for (const [slotIndex, slot] of intervals.entries()) {
+    const duration = slot.endMinute - slot.startMinute
+    if (duration <= 0) continue
+    const prevMatchIndex = intervals[slotIndex - 1]?.matchIndex ?? null
+    const nextMatchIndex = intervals[slotIndex + 1]?.matchIndex ?? null
 
-    for (const [phaseIndex, phaseEntry] of phases.entries()) {
-      const isFirstPhase = phaseIndex === 0
-      const isLastPhase = phaseIndex === phases.length - 1
-      const prevMatchIndex = !isFirstPhase
-        ? phaseEntry.matchIndex
-        : prevSlot?.matchIndex ?? null
-      const nextMatchIndex = !isLastPhase
-        ? phaseEntry.matchIndex
-        : nextSlot?.matchIndex ?? null
+    for (const player of players) {
+      const stats = playerStats.get(player.id)
+      if (!stats) continue
+      const state = cellState(slot, player.id)
+      const onField = isOnFieldState(state)
+      const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
+      const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
+      const sameMatch =
+        stats.previousState !== null && stats.previousMatchIndex === slot.matchIndex
 
-      for (const player of players) {
-        const stats = playerStats.get(player.id)
-        if (!stats) continue
-        const state =
-          phaseEntry.phase === 'pre' ? preCellState(slot, player.id) : cellState(slot, player.id)
-        const onField = isOnFieldState(state)
-        const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
-        const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
-        const sameMatch =
-          stats.previousState !== null && stats.previousMatchIndex === phaseEntry.matchIndex
-
-        if (!sameMatch) {
-          if (stats.currentOnFieldRun > 0) stats.currentRunTouchesMatchEnd = true
-          finalizeRun(stats)
-        }
-
-        if (isBenchState(state) && (!sameMatch || !wasBench)) {
-          stats.benchStints += 1
-        }
-
-        if (onField) {
-          if (stats.currentOnFieldRun <= 0 && prevMatchIndex !== phaseEntry.matchIndex) {
-            stats.currentRunTouchesMatchStart = true
-          }
-          stats.currentOnFieldRun += phaseEntry.duration
-          if (nextMatchIndex !== phaseEntry.matchIndex) {
-            stats.currentRunTouchesMatchEnd = true
-          }
-        } else {
-          finalizeRun(stats)
-        }
-
-        if (sameMatch) {
-          if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
-          if (wasBench && onField) stats.subbedOnCount += 1
-        }
-
-        stats.previousState = state
-        stats.previousMatchIndex = phaseEntry.matchIndex
+      if (!sameMatch) {
+        if (stats.currentOnFieldRun > 0) stats.currentRunTouchesMatchEnd = true
+        finalizeRun(stats)
       }
+
+      if (isBenchState(state) && (!sameMatch || !wasBench)) {
+        stats.benchStints += 1
+      }
+
+      if (onField) {
+        if (stats.currentOnFieldRun <= 0 && prevMatchIndex !== slot.matchIndex) {
+          stats.currentRunTouchesMatchStart = true
+        }
+        stats.currentOnFieldRun += duration
+        if (nextMatchIndex !== slot.matchIndex) {
+          stats.currentRunTouchesMatchEnd = true
+        }
+      } else {
+        finalizeRun(stats)
+      }
+
+      if (sameMatch) {
+        if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
+        if (wasBench && onField) stats.subbedOnCount += 1
+      }
+
+      stats.previousState = state
+      stats.previousMatchIndex = slot.matchIndex
     }
   }
 
@@ -210,8 +169,10 @@ export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
   return result
 }
 
-export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineProps) {
+export function Timeline({ slots: sourceSlots, players, onCellClick }: TimelineProps) {
   const [hoverSeg, setHoverSeg] = useState<number | null>(null)
+  const entries = useMemo(() => expandSlotEntries(sourceSlots), [sourceSlots])
+  const slots = useMemo(() => entries.map((entry) => entry.slot), [entries])
   const playerStats = useMemo(
     () => buildPlayerStatsMap(slots, players),
     [players, slots],
@@ -225,7 +186,7 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
       fieldMinutes.set(playerId, (fieldMinutes.get(playerId) ?? 0) + minutes)
     }
   }
-  const totalMatchMinutes = sportConfig.periodCount * sportConfig.periodDurationMinutes
+  const totalMatchMinutes = slots.reduce((total, slot) => total + Math.max(0, slot.endMinute - slot.startMinute), 0)
 
   // Compute next-rotation deltas per segment
   const deltas: { off: string[]; on: string[] }[] = slots.map((slot, i) => {
@@ -326,7 +287,7 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                     matchStart ? 'border-l-4 border-slate-300' : periodStart ? 'border-l-2 border-blue-200' : '',
                   ].join(' ')}
                 >
-                  {fmtMin(slot.startMinute)}
+                  {formatMinute(slot.startMinute)}
                 </th>
               )
             })}
@@ -380,8 +341,6 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                   const periodStart = !prev || prev.periodIndex !== slot.periodIndex || matchStart
                   const tint = slot.periodIndex % 2 === 0 ? 'bg-white' : 'bg-blue-50/40'
                   const state = cellState(slot, player.id)
-                  const preState = preCellState(slot, player.id)
-                  const splitInSeg = !!slot.midSwap && preState !== state
                   const isComingOff = deltas[index]?.off.includes(player.id)
                   const isComingOn = deltas[index]?.on.includes(player.id)
                   const isHoverSeg = hoverSeg === index
@@ -399,27 +358,15 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                     >
                       <button
                         type="button"
-                        onClick={() => onCellClick?.(index, player.id)}
-                        title={
-                          splitInSeg
-                            ? `Mid-segment swap at ${Math.floor(slot.midSwap!.atMinute)}'`
-                            : onCellClick
-                              ? 'Edit at this segment'
-                              : undefined
-                        }
+                        onClick={() => onCellClick?.(entries[index]!.index, player.id)}
+                        title={`${formatMinute(slot.startMinute)}–${formatMinute(slot.endMinute)}${onCellClick ? ' · Edit at this interval' : ''}`}
                         className={[
                           'relative inline-flex w-full h-6 items-center justify-center overflow-hidden rounded text-[11px] font-semibold leading-none',
-                          splitInSeg ? '' : stateBg[state],
+                          stateBg[state],
                           isComingOff ? 'ring-2 ring-amber-500' : '',
                           onCellClick ? 'hover:ring-2 hover:ring-blue-400 cursor-pointer' : 'cursor-default',
                         ].join(' ')}
                       >
-                        {splitInSeg && (
-                          <>
-                            <span className={['absolute inset-y-0 left-0 w-1/2', stateBg[preState]].join(' ')} />
-                            <span className={['absolute inset-y-0 right-0 w-1/2', stateBg[state]].join(' ')} />
-                          </>
-                        )}
                         <span className="relative">{stateGlyph[state]}</span>
                         {isComingOff && <span className="relative ml-0.5 text-amber-900">↓</span>}
                         {isComingOn && <span className="relative ml-0.5 text-green-700">↑</span>}
@@ -428,15 +375,15 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                   )
                 })}
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
-                  {Math.round(mins)}'
+                  {formatMinute(mins)}
                   <span className="block text-slate-400 font-normal">{pct}%</span>
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.benchStints}</td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
-                  {Math.round(stats.minConsecutiveOnField)}'
+                  {formatMinute(stats.minConsecutiveOnField)}
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
-                  {Math.round(stats.maxConsecutiveOnField)}'
+                  {formatMinute(stats.maxConsecutiveOnField)}
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOffCount}</td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOnCount}</td>

@@ -1,11 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { normalizePlayerLevel } from '../types'
 import { buildShareUrl } from '../utils/shareUrl'
 import { getBoundaryTransition } from '../utils/slotTransitions'
-import { generatePlan } from '../scheduler'
+import { formatMinute } from '../utils/slotIntervals'
 import { useSavedPlansStore } from '../store'
-import type { MatchPlan } from '../types'
 import { AppShell } from '../components/common/AppShell'
 import { Button } from '../components/common/Button'
 import { PageHeader } from '../components/common/PageHeader'
@@ -16,35 +14,12 @@ import { SegmentEditor } from '../components/plan-view/SegmentEditor'
 import { SetupModal } from '../components/plan-modals/SetupModal'
 import { PlayersModal } from '../components/plan-modals/PlayersModal'
 
-function buildGenerationSignature(plan: MatchPlan) {
-  return JSON.stringify({
-    benchStintMinutes: plan.benchStintMinutes,
-    matchCount: plan.matchCount,
-    absentPlayerIds: [...plan.absentPlayerIds].sort(),
-    roster: plan.roster.map((player) => ({
-      id: player.id,
-      level: normalizePlayerLevel(player.level),
-      excludedPositionTypeIds: [...player.excludedPositionTypeIds].sort(),
-    })),
-    pins: plan.pins,
-    periods: plan.sportConfig.periodCount,
-    periodDuration: plan.sportConfig.periodDurationMinutes,
-    totalOnField: plan.sportConfig.totalOnField,
-    lineup: plan.sportConfig.lineupSlots.map((s) => `${s.positionTypeId}:${s.label}`),
-    changeKeeperMidPeriod: plan.changeKeeperMidPeriod,
-    maxBenchSegments: plan.maxBenchSegments,
-    minSubsPerSegment: plan.minSubsPerSegment,
-    maxSubsPerSegment: plan.maxSubsPerSegment,
-  })
-}
-
 export function PlanPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { items, updateMatch, setSegmentPins, clearAllPins } = useSavedPlansStore()
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
-  const [warnings, setWarnings] = useState<string[]>([])
   const [shareCopied, setShareCopied] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [playersOpen, setPlayersOpen] = useState(false)
@@ -55,47 +30,6 @@ export function PlanPage() {
   const [focusSegmentIndex, setFocusSegmentIndex] = useState<number | null>(null)
 
   const item = items.find((entry) => entry.kind === 'match' && entry.plan.id === id)
-
-  const activePlayers = useMemo(() => {
-    if (!item || item.kind !== 'match') return []
-    return item.plan.roster.filter((p) => !item.plan.absentPlayerIds.includes(p.id))
-  }, [item])
-
-  const generationSignature = useMemo(() => {
-    if (!item || item.kind !== 'match') return ''
-    return buildGenerationSignature(item.plan)
-  }, [item])
-
-  const lastGeneratedSignatureRef = useRef<string | null>(
-    item && item.kind === 'match' && item.plan.slots.length > 0 ? generationSignature : null,
-  )
-
-  useEffect(() => {
-    if (!item || item.kind !== 'match' || !id) return
-    if (lastGeneratedSignatureRef.current === generationSignature) return
-
-    if (activePlayers.length === 0) {
-      setWarnings([])
-      if (item.plan.slots.length > 0) updateMatch(id, { slots: [] })
-      lastGeneratedSignatureRef.current = generationSignature
-      return
-    }
-
-    const result = generatePlan({
-      sportConfig: item.plan.sportConfig,
-      players: activePlayers,
-      benchStintMinutes: item.plan.benchStintMinutes,
-      matchCount: item.plan.matchCount,
-      pins: item.plan.pins,
-      changeKeeperMidPeriod: item.plan.changeKeeperMidPeriod,
-      maxBenchSegments: item.plan.maxBenchSegments,
-      minSubsPerSegment: item.plan.minSubsPerSegment,
-      maxSubsPerSegment: item.plan.maxSubsPerSegment,
-    })
-    setWarnings(result.warnings.map((w) => w.message))
-    updateMatch(id, { slots: result.slots })
-    lastGeneratedSignatureRef.current = generationSignature
-  }, [item, id, activePlayers, generationSignature, updateMatch])
 
   const slotEntries = useMemo(() => {
     if (!item || item.kind !== 'match') return []
@@ -145,8 +79,11 @@ export function PlanPage() {
   }
 
   const plan = item.plan
+  const warnings = plan.warnings ?? []
+  const lockedCount = plan.lockedSlots?.length ?? 0
   const playerById = new Map(plan.roster.map((p) => [p.id, p]))
   const pinCount = Object.keys(plan.pins).length
+  const editablePinCount = Object.keys(plan.pins).filter((index) => Number(index) >= lockedCount).length
   const activeEntryIndex =
     focusSegmentIndex !== null
       ? focusSlotEntries.findIndex((entry) => entry.index === focusSegmentIndex)
@@ -183,7 +120,7 @@ export function PlanPage() {
   }
 
   const openActiveSegmentEditor = (playerId: string) => {
-    if (!activeEntry) return
+    if (!activeEntry || activeEntry.index < lockedCount) return
     setEditSeg({ segmentIndex: activeEntry.index, playerId, mode: 'in-game' })
   }
 
@@ -225,9 +162,9 @@ export function PlanPage() {
               <Button size="sm" variant="secondary" onClick={() => setSetupOpen(true)}>
                 Setup
               </Button>
-              {pinCount > 0 && (
+              {editablePinCount > 0 && (
                 <Button size="sm" variant="secondary" onClick={() => clearAllPins(id)}>
-                  Clear {pinCount} pin{pinCount === 1 ? '' : 's'}
+                  Clear {editablePinCount} pin{editablePinCount === 1 ? '' : 's'}
                 </Button>
               )}
               <Button size="sm" variant="secondary" onClick={handleShare}>
@@ -242,7 +179,7 @@ export function PlanPage() {
 
         <p className="mb-4 text-xs text-slate-500">
           {plan.sportConfig.name} · {plan.sportConfig.periodCount}×{plan.sportConfig.periodDurationMinutes} min ·{' '}
-          {plan.benchStintMinutes} min stints
+          substitutions every {plan.benchStintMinutes} min
           {pinCount > 0 && ` · ${pinCount} segment pin${pinCount === 1 ? '' : 's'}`}
         </p>
 
@@ -253,7 +190,7 @@ export function PlanPage() {
                 key={index}
                 className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700"
               >
-                {warning}
+                {warning.message}
               </div>
             ))}
           </div>
@@ -351,7 +288,7 @@ export function PlanPage() {
                     >
                       {focusSlotEntries.map((entry) => (
                         <option key={entry.slot.id} value={entry.index}>
-                          {Math.floor(entry.slot.startMinute)}'–{Math.ceil(entry.slot.endMinute)}'
+                          {formatMinute(entry.slot.startMinute)}–{formatMinute(entry.slot.endMinute)}
                         </option>
                       ))}
                     </select>
@@ -376,10 +313,12 @@ export function PlanPage() {
                         </p>
                         <p className="mt-1 text-sm font-semibold text-slate-800">
                           Match {activeEntry.slot.matchIndex + 1} · Period {activeEntry.slot.periodIndex + 1} ·{' '}
-                          {Math.floor(activeEntry.slot.startMinute)}'–{Math.ceil(activeEntry.slot.endMinute)}'
+                          {formatMinute(activeEntry.slot.startMinute)}–{formatMinute(activeEntry.slot.endMinute)}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Select any player below to adjust now. Remaining plan auto-rebalances.
+                          {activeEntry.index < lockedCount
+                            ? 'Completed play is locked and cannot be edited.'
+                            : 'Adjust this interval; earlier play is preserved and the remaining plan rebalances.'}
                         </p>
                       </div>
 
@@ -390,7 +329,7 @@ export function PlanPage() {
                         {nextEntry ? (
                           <div className="mt-1 space-y-1">
                             <p className="text-sm font-semibold text-amber-900">
-                              At {Math.floor(nextEntry.slot.startMinute)}'
+                              At {formatMinute(nextEntry.slot.startMinute)}
                             </p>
                             <p className="text-xs text-amber-800">
                               Off:{' '}
@@ -404,10 +343,9 @@ export function PlanPage() {
                                 ? onNextIds.map((pid) => playerById.get(pid)?.name ?? pid).join(', ')
                                 : 'No changes'}
                             </p>
-                            {nextEntry.slot.midSwap && (
+                            {activeEntry.slot.gkId !== nextEntry.slot.gkId && (
                               <p className="text-xs text-amber-800">
-                                GK mid-swap @ {Math.floor(nextEntry.slot.midSwap.atMinute)}':{' '}
-                                {playerById.get(nextEntry.slot.midSwap.preGkId ?? '')?.name ?? '—'} →{' '}
+                                GK: {playerById.get(activeEntry.slot.gkId ?? '')?.name ?? '—'} →{' '}
                                 {playerById.get(nextEntry.slot.gkId ?? '')?.name ?? '—'}
                               </p>
                             )}
@@ -453,14 +391,18 @@ export function PlanPage() {
           <div className="space-y-8">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
-                <p className="text-xs font-semibold text-slate-500">Player timeline · click any cell to edit</p>
+                <p className="text-xs font-semibold text-slate-500">
+                  Player timeline · {lockedCount ? 'completed play is locked; click a remaining interval to edit' : 'click any cell to edit'}
+                </p>
               </div>
               <div className="p-2 lg:p-4">
                 <Timeline
                   slots={plan.slots}
                   sportConfig={plan.sportConfig}
                   players={plan.roster}
-                  onCellClick={(segmentIndex, playerId) => setEditSeg({ segmentIndex, playerId, mode: 'plan' })}
+                  onCellClick={(segmentIndex, playerId) => {
+                    if (segmentIndex >= lockedCount) setEditSeg({ segmentIndex, playerId, mode: 'plan' })
+                  }}
                 />
               </div>
             </div>
@@ -520,26 +462,13 @@ export function PlanPage() {
                                 className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm"
                               >
                                 <p className="text-xs font-semibold text-slate-500 mb-2">
-                                  {Math.floor(slot.startMinute)}'–{Math.ceil(slot.endMinute)}'
+                                  {formatMinute(slot.startMinute)}–{formatMinute(slot.endMinute)}
                                 </p>
                                 <div className="space-y-1.5">
-                                  {slot.midSwap && (
-                                    <p className="text-[10px] font-semibold uppercase text-amber-700">
-                                      Mid-segment keeper swap @ {Math.floor(slot.midSwap.atMinute)}'
-                                    </p>
-                                  )}
                                   <div>
                                     <span className="text-[10px] font-semibold uppercase text-yellow-700 mr-2">GK</span>
                                     <span className="text-xs font-medium text-slate-700">
-                                      {slot.midSwap ? (
-                                        <>
-                                          {playerById.get(slot.midSwap.preGkId ?? '')?.name ?? '—'}{' '}
-                                          <span className="text-slate-400">→</span>{' '}
-                                          {gkPlayer?.name ?? '—'}
-                                        </>
-                                      ) : (
-                                        gkPlayer?.name ?? <span className="text-red-400">—</span>
-                                      )}
+                                      {gkPlayer?.name ?? <span className="text-red-400">—</span>}
                                     </span>
                                   </div>
                                   <div>
@@ -612,7 +541,7 @@ export function PlanPage() {
       {setupOpen && <SetupModal plan={plan} onClose={() => setSetupOpen(false)} />}
       {playersOpen && <PlayersModal plan={plan} onClose={() => setPlayersOpen(false)} />}
 
-      {editSeg && plan.slots[editSeg.segmentIndex] && (
+      {editSeg && editSeg.segmentIndex >= lockedCount && plan.slots[editSeg.segmentIndex] && (
         <SegmentEditor
           slots={plan.slots}
           segmentIndex={editSeg.segmentIndex}
@@ -622,7 +551,7 @@ export function PlanPage() {
           totalOnField={plan.sportConfig.totalOnField}
           interactionMode={editSeg.mode}
           onClose={() => setEditSeg(null)}
-          onSetPins={(updates) => setSegmentPins(id, updates)}
+          onSetPins={(updates) => setSegmentPins(id, updates, editSeg.mode === 'in-game' ? editSeg.segmentIndex : undefined)}
         />
       )}
     </AppShell>
