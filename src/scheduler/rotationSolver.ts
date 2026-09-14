@@ -33,6 +33,7 @@ interface PlayerStats {
   periodEndBenchCount: number
   lastBenchedSeg: number
   keeperSegments: number
+  consecutiveOnFieldSegments: number
 }
 
 export function solveRotation(input: RotationSolverInput): RotationSolverResult {
@@ -75,6 +76,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       periodEndBenchCount: 0,
       lastBenchedSeg: -Infinity,
       keeperSegments: 0,
+      consecutiveOnFieldSegments: 0,
     })
   }
 
@@ -139,6 +141,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
 
       let gkId: string | null = null
       let bench: string[]
+      let pinnedFieldIds = new Set<string>()
       let preBenchForMidSwap: string[] | null = null
       let midPeriodSwapApplied: { incoming: string; outgoing: string } | null = null
       const keeperCmp = (a: Player, b: Player) => {
@@ -238,6 +241,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           bench.push(midPeriodSwapApplied.outgoing)
         } else if (pin.fieldIds) {
           const fieldSet = new Set(pin.fieldIds.filter((id) => activeIds.has(id)))
+          pinnedFieldIds = fieldSet
           bench = active
             .filter((p) => !fieldSet.has(p.id) && p.id !== gkId)
             .map((p) => p.id)
@@ -264,6 +268,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         gkId,
         benchSpots: segBenchSpots,
         forcedFieldIds: boundaryCarryOverFieldIds,
+        pinnedFieldIds,
         stats,
         isBoundaryStart: isPeriodStart,
         isBoundaryEnd: isPeriodEnd,
@@ -283,6 +288,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           gkId,
           benchSpots: segBenchSpots,
           forcedFieldIds: boundaryCarryOverFieldIds,
+          pinnedFieldIds,
           stats,
           isBoundaryStart: isPeriodStart,
           isBoundaryEnd: isPeriodEnd,
@@ -344,6 +350,14 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
       for (const id of creditedSet) {
         const s = stats.get(id)
         if (s) s.pitchCount++
+      }
+
+      const onFieldSet = new Set([...(gkId ? [gkId] : []), ...field])
+      for (const p of players) {
+        const s = stats.get(p.id)
+        if (!s) continue
+        if (onFieldSet.has(p.id)) s.consecutiveOnFieldSegments += 1
+        else s.consecutiveOnFieldSegments = 0
       }
 
       // Update consecutive-bench counter.
@@ -474,6 +488,12 @@ function pickBench(args: PickBenchArgs): string[] {
     (p) => !prevBench.has(p.id) && !forcedFieldIds.has(p.id),
   )
   fieldCandidates.sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+  const protectedRecentReturners = fieldCandidates.filter(
+    (p) => (stats.get(p.id)?.consecutiveOnFieldSegments ?? 0) <= 1,
+  )
+  const preferredFieldCandidates = fieldCandidates.filter(
+    (p) => (stats.get(p.id)?.consecutiveOnFieldSegments ?? 0) > 1,
+  )
 
   const totalKeeperEligible = active.filter(isKeeperEligible).length
   let keOnNewBench = stayedBench.filter((id) => {
@@ -486,7 +506,15 @@ function pickBench(args: PickBenchArgs): string[] {
   }).length
 
   const newBenchAddition: string[] = []
-  for (const p of fieldCandidates) {
+  for (const p of preferredFieldCandidates) {
+    if (newBenchAddition.length >= subOn.length) break
+    if (isL1(p) && l1OnNewBench >= 1) continue
+    if (isKeeperEligible(p) && totalKeeperEligible - keOnNewBench - 1 < 1) continue
+    newBenchAddition.push(p.id)
+    if (isL1(p)) l1OnNewBench++
+    if (isKeeperEligible(p)) keOnNewBench++
+  }
+  for (const p of protectedRecentReturners) {
     if (newBenchAddition.length >= subOn.length) break
     if (isL1(p) && l1OnNewBench >= 1) continue
     if (isKeeperEligible(p) && totalKeeperEligible - keOnNewBench - 1 < 1) continue
@@ -592,6 +620,9 @@ function compareForBench(
 ): number {
   const sa = stats.get(a.id)!
   const sb = stats.get(b.id)!
+  if (sa.consecutiveOnFieldSegments !== sb.consecutiveOnFieldSegments) {
+    return sb.consecutiveOnFieldSegments - sa.consecutiveOnFieldSegments
+  }
   if (sa.pitchCount !== sb.pitchCount) return sb.pitchCount - sa.pitchCount
   if (sa.benchCount !== sb.benchCount) return sa.benchCount - sb.benchCount
   if (isBoundaryStart && sa.periodStartBenchCount !== sb.periodStartBenchCount) {
@@ -610,6 +641,7 @@ function normalizeBench(args: {
   gkId: string | null
   benchSpots: number
   forcedFieldIds: Set<string>
+  pinnedFieldIds: Set<string>
   stats: Map<string, PlayerStats>
   isBoundaryStart: boolean
   isBoundaryEnd: boolean
@@ -623,6 +655,7 @@ function normalizeBench(args: {
     gkId,
     benchSpots,
     forcedFieldIds,
+    pinnedFieldIds,
     stats,
     isBoundaryStart,
     isBoundaryEnd,
@@ -636,7 +669,13 @@ function normalizeBench(args: {
   const originalBenchLength = bench.length
 
   for (const id of bench) {
-    if (id === gkId || forcedFieldIds.has(id) || !activeIds.has(id) || seen.has(id)) continue
+    if (
+      id === gkId ||
+      forcedFieldIds.has(id) ||
+      pinnedFieldIds.has(id) ||
+      !activeIds.has(id) ||
+      seen.has(id)
+    ) continue
     seen.add(id)
     nextBench.push(id)
   }
@@ -666,10 +705,49 @@ function normalizeBench(args: {
       .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
     for (const p of fillCandidates) {
       if (nextBench.length >= benchSpots) break
-        if (forcedFieldIds.has(p.id)) continue
+        if (forcedFieldIds.has(p.id) || pinnedFieldIds.has(p.id)) continue
         nextBench.push(p.id)
         seen.add(p.id)
       }
+  }
+
+  if (nextBench.length < benchSpots) {
+    const forcedFill = active
+      .filter(
+        (p) => p.id !== gkId && !seen.has(p.id) && forcedFieldIds.has(p.id) && !pinnedFieldIds.has(p.id),
+      )
+      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+    for (const p of forcedFill) {
+      if (nextBench.length >= benchSpots) break
+      nextBench.push(p.id)
+      seen.add(p.id)
+    }
+    if (forcedFill.length > 0) {
+      warnings.push({
+        kind: 'lock-conflict',
+        message: `Pin at ${segmentLabel} relaxed a boundary carry-over preference to preserve exact on-field count.`,
+      })
+    }
+  }
+
+  if (nextBench.length < benchSpots) {
+    const relaxedPinFill = active
+      .filter((p) => p.id !== gkId && !seen.has(p.id))
+      .sort((a, b) => compareForBench(a, b, stats, isBoundaryStart, isBoundaryEnd))
+    let usedPinnedField = false
+    for (const p of relaxedPinFill) {
+      if (nextBench.length >= benchSpots) break
+      if (forcedFieldIds.has(p.id)) continue
+      if (pinnedFieldIds.has(p.id)) usedPinnedField = true
+      nextBench.push(p.id)
+      seen.add(p.id)
+    }
+    if (usedPinnedField) {
+      warnings.push({
+        kind: 'lock-conflict',
+        message: `Pin at ${segmentLabel} relaxed a field pin to preserve exact on-field count.`,
+      })
+    }
   }
 
   return nextBench

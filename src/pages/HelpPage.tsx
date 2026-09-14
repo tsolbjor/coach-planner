@@ -3,6 +3,15 @@ import { Card } from '../components/common/Card'
 
 const sections = [
   {
+    title: 'Hard boundaries vs fairness guidelines',
+    points: [
+      'Hard boundary: on-field count is fixed — the planner preserves an exact full lineup whenever enough active players are available.',
+      'Hard boundaries also include role validity (no player can be both on field and bench in the same segment).',
+      'Fairness guidelines are best-effort preferences and can be relaxed when constraints collide (with warnings).',
+      'Rule of thumb for substitutions: players with the longest consecutive time on field are prioritized to come off before players who just returned from the bench.',
+    ],
+  },
+  {
     title: 'What The Plan Optimizes',
     points: [
       'The planner builds a full segment-by-segment rotation from your players, sport setup, bench cadence, role eligibility, and player levels.',

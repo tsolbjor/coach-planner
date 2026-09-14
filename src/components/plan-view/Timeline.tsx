@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Player, SportConfig, TimeSlot } from '../../types'
 import { getSlotPitchMinutesByPlayer } from '../../utils/pitchTime'
 
@@ -54,6 +54,109 @@ function preCellState(slot: TimeSlot, playerId: string): CellState {
   return 'unknown'
 }
 
+function isOnFieldState(state: CellState) {
+  return state === 'gk' || state === 'field'
+}
+
+function isBenchState(state: CellState) {
+  return state === 'bench'
+}
+
+interface PlayerStats {
+  benchStints: number
+  minConsecutiveOnField: number
+  maxConsecutiveOnField: number
+  subbedOffCount: number
+  subbedOnCount: number
+  totalSubEvents: number
+}
+
+interface MutablePlayerStats extends Omit<PlayerStats, 'totalSubEvents'> {
+  currentOnFieldRun: number
+  previousState: CellState | null
+  previousMatchIndex: number | null
+}
+
+function finalizeRun(stats: MutablePlayerStats) {
+  if (stats.currentOnFieldRun <= 0) return
+  if (stats.currentOnFieldRun < stats.minConsecutiveOnField) {
+    stats.minConsecutiveOnField = stats.currentOnFieldRun
+  }
+  if (stats.currentOnFieldRun > stats.maxConsecutiveOnField) {
+    stats.maxConsecutiveOnField = stats.currentOnFieldRun
+  }
+  stats.currentOnFieldRun = 0
+}
+
+function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
+  const playerStats = new Map<string, MutablePlayerStats>(
+    players.map((player) => [
+      player.id,
+      {
+        benchStints: 0,
+        minConsecutiveOnField: Number.POSITIVE_INFINITY,
+        maxConsecutiveOnField: 0,
+        currentOnFieldRun: 0,
+        subbedOffCount: 0,
+        subbedOnCount: 0,
+        previousState: null,
+        previousMatchIndex: null,
+      },
+    ]),
+  )
+
+  for (const slot of slots) {
+    const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
+
+    for (const player of players) {
+      const stats = playerStats.get(player.id)
+      if (!stats) continue
+      const state = cellState(slot, player.id)
+      const onField = isOnFieldState(state)
+      const wasOnField = stats.previousState ? isOnFieldState(stats.previousState) : false
+      const wasBench = stats.previousState ? isBenchState(stats.previousState) : false
+      const sameMatch = stats.previousState !== null && stats.previousMatchIndex === slot.matchIndex
+
+      if (!sameMatch) finalizeRun(stats)
+
+      if (isBenchState(state) && (!sameMatch || !wasBench)) {
+        stats.benchStints += 1
+      }
+
+      if (onField) {
+        stats.currentOnFieldRun += slotMinutes
+      } else {
+        finalizeRun(stats)
+      }
+
+      if (sameMatch) {
+        if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
+        if (wasBench && onField) stats.subbedOnCount += 1
+      }
+
+      stats.previousState = state
+      stats.previousMatchIndex = slot.matchIndex
+    }
+  }
+
+  const result = new Map<string, PlayerStats>()
+  for (const player of players) {
+    const stats = playerStats.get(player.id)
+    if (!stats) continue
+    finalizeRun(stats)
+    result.set(player.id, {
+      benchStints: stats.benchStints,
+      minConsecutiveOnField:
+        stats.minConsecutiveOnField === Number.POSITIVE_INFINITY ? 0 : stats.minConsecutiveOnField,
+      maxConsecutiveOnField: stats.maxConsecutiveOnField,
+      subbedOffCount: stats.subbedOffCount,
+      subbedOnCount: stats.subbedOnCount,
+      totalSubEvents: stats.subbedOffCount + stats.subbedOnCount,
+    })
+  }
+  return result
+}
+
 export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineProps) {
   const [hoverSeg, setHoverSeg] = useState<number | null>(null)
   if (slots.length === 0) return null
@@ -78,6 +181,10 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
       on: [...nxt].filter((id) => !cur.has(id)),
     }
   })
+  const playerStats = useMemo(
+    () => buildPlayerStatsMap(slots, players),
+    [players, slots],
+  )
 
   return (
     <div className="overflow-x-auto">
@@ -109,8 +216,50 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                 </th>
               )
             })}
-            <th className="rounded-tr-xl bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3.5rem]">
+            <th className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3.5rem]">
               Min
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Bench stints"
+            >
+              <span aria-hidden="true">Bench</span>
+              <span className="sr-only">Bench stints</span>
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Min consecutive on-field minutes"
+            >
+              <span aria-hidden="true">Min C</span>
+              <span className="sr-only">Minimum consecutive on-field minutes</span>
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Max consecutive on-field minutes"
+            >
+              <span aria-hidden="true">Max C</span>
+              <span className="sr-only">Maximum consecutive on-field minutes</span>
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Times subbed off"
+            >
+              <span aria-hidden="true">Off</span>
+              <span className="sr-only">Times subbed off</span>
+            </th>
+            <th
+              className="bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Times subbed on"
+            >
+              <span aria-hidden="true">On</span>
+              <span className="sr-only">Times subbed on</span>
+            </th>
+            <th
+              className="rounded-tr-xl bg-slate-100 py-2 px-2 text-center font-semibold text-slate-600 min-w-[3rem]"
+              title="Total substitutions (on + off)"
+            >
+              <span aria-hidden="true">Subs</span>
+              <span className="sr-only">Total substitutions (on plus off)</span>
             </th>
           </tr>
           <tr>
@@ -136,12 +285,44 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
               )
             })}
             <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">Min</th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">B</span>
+              <span className="sr-only">Bench stints</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Min C</span>
+              <span className="sr-only">Minimum consecutive on-field minutes</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Max C</span>
+              <span className="sr-only">Maximum consecutive on-field minutes</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Off</span>
+              <span className="sr-only">Times subbed off</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">On</span>
+              <span className="sr-only">Times subbed on</span>
+            </th>
+            <th className="py-1.5 px-2 text-center font-semibold text-slate-600 min-w-[3rem]">
+              <span aria-hidden="true">Subs</span>
+              <span className="sr-only">Total substitutions</span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {players.map((player) => {
             const mins = fieldMinutes.get(player.id) ?? 0
             const pct = totalMatchMinutes > 0 ? Math.round((mins / totalMatchMinutes) * 100) : 0
+            const stats = playerStats.get(player.id) ?? {
+              benchStints: 0,
+              minConsecutiveOnField: 0,
+              maxConsecutiveOnField: 0,
+              subbedOffCount: 0,
+              subbedOnCount: 0,
+              totalSubEvents: 0,
+            }
             return (
               <tr key={player.id} className="border-t border-slate-200">
                 <td className="py-1.5 pr-3 font-medium text-slate-800 sticky left-0 bg-white z-10 truncate max-w-[8rem]">
@@ -204,6 +385,16 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                   {Math.round(mins)}'
                   <span className="block text-slate-400 font-normal">{pct}%</span>
                 </td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.benchStints}</td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
+                  {Math.round(stats.minConsecutiveOnField)}'
+                </td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
+                  {Math.round(stats.maxConsecutiveOnField)}'
+                </td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOffCount}</td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.subbedOnCount}</td>
+                <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.totalSubEvents}</td>
               </tr>
             )
           })}
@@ -231,6 +422,12 @@ export function Timeline({ slots, sportConfig, players, onCellClick }: TimelineP
                 </td>
               )
             })}
+            <td />
+            <td />
+            <td />
+            <td />
+            <td />
+            <td />
             <td />
           </tr>
         </tfoot>

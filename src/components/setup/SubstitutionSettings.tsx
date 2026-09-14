@@ -82,7 +82,7 @@ export function SubstitutionSettings({
             onChange={onMaxSubsPerSegmentChange}
           />
           <p className="text-xs text-slate-500">
-            Looser caps let some players stay on the bench across multiple segments and reduce per-segment churn.
+            These are fairness/churn guidelines: looser caps allow longer bench runs, while hard lineup limits are still preserved.
           </p>
         </div>
 

@@ -12,6 +12,20 @@ function benchCount(slots: TimeSlot[], playerId: string): number {
   return slots.filter((s) => s.benchIds.includes(playerId)).length
 }
 
+function onFieldIds(slot: TimeSlot): string[] {
+  return [slot.gkId, ...slot.fieldIds].filter((id): id is string => !!id)
+}
+
+function consecutiveOnFieldStreak(slots: TimeSlot[], upToIndex: number, playerId: string): number {
+  let streak = 0
+  for (let i = upToIndex; i >= 0; i--) {
+    const slot = slots[i]!
+    if (onFieldIds(slot).includes(playerId)) streak += 1
+    else break
+  }
+  return streak
+}
+
 describe('generatePlan (integration)', () => {
   it('7 players, 5 on field, 2 periods × 4 segments — pitch time within ±1 segment', () => {
     const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 20 })
@@ -300,6 +314,75 @@ describe('generatePlan (integration)', () => {
     })
     const counts = makePlayers(7).map((p) => benchCount(result.slots, p.id))
     expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(2)
+  })
+
+  it('keeps exact on-field count whenever active players are enough', () => {
+    const sport = makeFiveASide({ periodCount: 2, periodDurationMinutes: 20 })
+    const players = makePlayers(8)
+    const result = generatePlan({
+      sportConfig: sport,
+      players,
+      benchStintMinutes: 5,
+      matchCount: 1,
+      pins: {
+        1: { absentIds: ['p8'] },
+        3: { absentCreditedIds: ['p7'] },
+        4: { benchIds: ['p2', 'p3', 'p6'] },
+      },
+    })
+
+    for (const slot of result.slots) {
+      const activeCount = players.length - new Set(slot.absentIds).size
+      const onFieldCount = onFieldIds(slot).length
+      if (activeCount >= sport.totalOnField) expect(onFieldCount).toBe(sport.totalOnField)
+    }
+  })
+
+  it('prefers subbing longest current on-field streak and protects recent returners', () => {
+    const baseSport = makeFiveASide({ periodCount: 1, periodDurationMinutes: 25 })
+    const sport = {
+      ...baseSport,
+      hasKeeper: false,
+      totalOnField: 4,
+      positionTypes: baseSport.positionTypes.filter((positionType) => !positionType.isKeeper),
+      lineupSlots: baseSport.lineupSlots.filter((slot) => slot.slotId !== 'gk'),
+    }
+    const result = generatePlan({
+      sportConfig: sport,
+      players: makePlayers(8),
+      benchStintMinutes: 5,
+      matchCount: 1,
+      maxBenchSegments: 4,
+      minSubsPerSegment: 1,
+      maxSubsPerSegment: 2,
+    })
+
+    for (let i = 1; i < result.slots.length; i++) {
+      const prev = result.slots[i - 1]!
+      const curr = result.slots[i]!
+      if (curr.matchIndex !== prev.matchIndex) continue
+
+      const prevFieldCandidates = onFieldIds(prev)
+      const currentlyBenched = new Set(curr.benchIds)
+      const newlyBenched = prevFieldCandidates.filter((id) => currentlyBenched.has(id))
+      const stayedOnField = prevFieldCandidates.filter((id) => !currentlyBenched.has(id))
+      if (newlyBenched.length === 0 || stayedOnField.length === 0) continue
+
+      const benchedStreaks = newlyBenched.map((id) => consecutiveOnFieldStreak(result.slots, i - 1, id))
+      const stayedStreaks = stayedOnField.map((id) => consecutiveOnFieldStreak(result.slots, i - 1, id))
+      expect(Math.min(...benchedStreaks)).toBeGreaterThanOrEqual(Math.max(...stayedStreaks))
+
+      if (i >= 2) {
+        const twoBackBench = new Set(result.slots[i - 2]!.benchIds)
+        for (const id of newlyBenched) {
+          const wasBenchedTwoBack = twoBackBench.has(id)
+          const wasOnFieldPrev = onFieldIds(prev).includes(id)
+          if (wasBenchedTwoBack && wasOnFieldPrev) {
+            expect.fail(`Player ${id} bounced bench→field→bench too quickly`)
+          }
+        }
+      }
+    }
   })
 
   it('position overlay fills every outfield slot for healthy roster', () => {
