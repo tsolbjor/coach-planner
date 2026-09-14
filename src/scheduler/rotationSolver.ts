@@ -237,6 +237,24 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
             })
           }
         } else {
+          const preferredIncomingKeeper = pickKeeper(
+            active.filter((player) => player.id !== prevGkId),
+            stats,
+            lastKeeperId,
+            isKeeperEligible,
+            fairnessOrder,
+            rotationCursor,
+            players.length,
+          )
+          if (preferredIncomingKeeper) {
+            preBenchForMidSwap = ensureBenchContains({
+              bench: preBenchForMidSwap,
+              requiredIds: [preferredIncomingKeeper],
+              benchSpots: segBenchSpots,
+              activeIds,
+              excludedIds: new Set([prevGkId]),
+            })
+          }
           const benchKeeperCandidates = preBenchForMidSwap
             .map((id) => playerById.get(id))
             .filter((p): p is Player => !!p && isKeeperEligible(p))
