@@ -73,22 +73,30 @@ interface PlayerStats {
 
 interface MutablePlayerStats extends Omit<PlayerStats, 'totalSubEvents'> {
   currentOnFieldRun: number
+  currentRunTouchesPlanStart: boolean
+  currentRunTouchesPlanEnd: boolean
   previousState: CellState | null
   previousMatchIndex: number | null
 }
 
 function finalizeRun(stats: MutablePlayerStats) {
   if (stats.currentOnFieldRun <= 0) return
-  if (stats.currentOnFieldRun < stats.minConsecutiveOnField) {
+  if (
+    !stats.currentRunTouchesPlanStart &&
+    !stats.currentRunTouchesPlanEnd &&
+    stats.currentOnFieldRun < stats.minConsecutiveOnField
+  ) {
     stats.minConsecutiveOnField = stats.currentOnFieldRun
   }
   if (stats.currentOnFieldRun > stats.maxConsecutiveOnField) {
     stats.maxConsecutiveOnField = stats.currentOnFieldRun
   }
   stats.currentOnFieldRun = 0
+  stats.currentRunTouchesPlanStart = false
+  stats.currentRunTouchesPlanEnd = false
 }
 
-function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
+export function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
   const playerStats = new Map<string, MutablePlayerStats>(
     players.map((player) => [
       player.id,
@@ -97,6 +105,8 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
         minConsecutiveOnField: Number.POSITIVE_INFINITY,
         maxConsecutiveOnField: 0,
         currentOnFieldRun: 0,
+        currentRunTouchesPlanStart: false,
+        currentRunTouchesPlanEnd: false,
         subbedOffCount: 0,
         subbedOnCount: 0,
         previousState: null,
@@ -105,7 +115,7 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
     ]),
   )
 
-  for (const slot of slots) {
+  for (const [slotIndex, slot] of slots.entries()) {
     const slotMinutes = Math.max(0, slot.endMinute - slot.startMinute)
 
     for (const player of players) {
@@ -124,7 +134,13 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
       }
 
       if (onField) {
+        if (stats.currentOnFieldRun <= 0 && slotIndex === 0) {
+          stats.currentRunTouchesPlanStart = true
+        }
         stats.currentOnFieldRun += slotMinutes
+        if (slotIndex === slots.length - 1) {
+          stats.currentRunTouchesPlanEnd = true
+        }
       } else {
         finalizeRun(stats)
       }
