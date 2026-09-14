@@ -312,7 +312,7 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         })
       }
 
-      if (prevGkId && gkId && prevGkId !== gkId && !midPeriodSwapApplied && activeIds.has(prevGkId)) {
+      if (prevGkId && gkId && prevGkId !== gkId && activeIds.has(prevGkId)) {
         bench = ensureBenchContains({
           bench,
           requiredIds: [prevGkId],
