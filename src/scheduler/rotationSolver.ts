@@ -529,22 +529,23 @@ function pickBench(args: PickBenchArgs): string[] {
   tryAddCandidates(protectedRecentReturners, { respectL1Cap: true, respectKeeperCap: true })
   tryAddCandidates(preferredFieldCandidates, { respectL1Cap: true, respectKeeperCap: false })
   tryAddCandidates(protectedRecentReturners, { respectL1Cap: true, respectKeeperCap: false })
-  if (totalKeeperEligible - keOnNewBench < 1) {
-    warnings.push({
-      kind: 'keeper-unavailable',
-      message: 'Bench picks would leave no keeper-eligible on field.',
-    })
-  }
   // Relax L1 cap if still short.
   if (newBenchAddition.length < subOn.length) {
     for (const p of fieldCandidates) {
       if (newBenchAddition.length >= subOn.length) break
       if (newBenchAddition.includes(p.id)) continue
       newBenchAddition.push(p.id)
+      if (isKeeperEligible(p)) keOnNewBench++
     }
     warnings.push({
       kind: 'l1-cap-infeasible',
       message: 'Forced to bench more than one top-level player at once.',
+    })
+  }
+  if (totalKeeperEligible - keOnNewBench < 1) {
+    warnings.push({
+      kind: 'keeper-unavailable',
+      message: 'Bench picks would leave no keeper-eligible on field.',
     })
   }
 
