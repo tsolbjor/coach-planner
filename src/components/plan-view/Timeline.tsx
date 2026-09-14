@@ -62,10 +62,6 @@ function isBenchState(state: CellState) {
   return state === 'bench'
 }
 
-function isKnownState(state: CellState) {
-  return state !== 'unknown'
-}
-
 interface PlayerStats {
   benchStints: number
   minConsecutiveOnField: number
@@ -134,12 +130,8 @@ function buildPlayerStatsMap(slots: TimeSlot[], players: Player[]) {
       }
 
       if (sameMatch) {
-        const previousKnown = stats.previousState ? isKnownState(stats.previousState) : false
-        const currentKnown = isKnownState(state)
-        if (previousKnown && currentKnown) {
-          if (wasOnField && !onField) stats.subbedOffCount += 1
-          if (!wasOnField && onField) stats.subbedOnCount += 1
-        }
+        if (wasOnField && isBenchState(state)) stats.subbedOffCount += 1
+        if (wasBench && onField) stats.subbedOnCount += 1
       }
 
       stats.previousState = state
