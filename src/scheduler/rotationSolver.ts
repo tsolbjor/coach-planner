@@ -164,7 +164,9 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         return compareByFairnessOrder(a.id, b.id, fairnessOrder, rotationCursor, players.length)
       }
 
-      const noPinOverride = pin.gkId === undefined && !pin.benchIds && !pin.fieldIds
+      const hasBenchPin = (pin.benchIds?.length ?? 0) > 0
+      const hasFieldPin = (pin.fieldIds?.length ?? 0) > 0
+      const noPinOverride = pin.gkId === undefined && !hasBenchPin && !hasFieldPin
 
       const benchArgs = {
         active,
@@ -189,8 +191,8 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
         isMidSegmentSwap &&
         prevGkId &&
         activeIds.has(prevGkId) &&
-        !pin.benchIds &&
-        !pin.fieldIds &&
+        !hasBenchPin &&
+        !hasFieldPin &&
         pin.gkId &&
         pin.gkId !== prevGkId &&
         activeIds.has(pin.gkId) &&
@@ -311,12 +313,12 @@ export function solveRotation(input: RotationSolverInput): RotationSolverResult 
           }
         }
 
-        if (pin.benchIds) {
+        if (hasBenchPin) {
           bench = [...pin.benchIds].filter((id) => activeIds.has(id))
         } else if (midPeriodSwapApplied) {
           bench = [...prevBench].filter((id) => id !== midPeriodSwapApplied!.incoming && activeIds.has(id))
           bench.push(midPeriodSwapApplied.outgoing)
-        } else if (pin.fieldIds) {
+        } else if (hasFieldPin) {
           const fieldSet = new Set(pin.fieldIds.filter((id) => activeIds.has(id)))
           pinnedFieldIds = fieldSet
           bench = active
