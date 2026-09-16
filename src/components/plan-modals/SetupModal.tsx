@@ -166,7 +166,7 @@ export function SetupModal({ plan, onClose }: SetupModalProps) {
                     onChange={(event) => handleLabelChange(position.id, event.target.value)}
                     disabled={index === 0}
                     className={[
-                      'flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
+                      'min-w-0 flex-1 rounded-lg border px-3 py-2 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500',
                       index === 0
                         ? 'border-yellow-200 bg-yellow-50 text-yellow-900'
                         : 'border-slate-300 bg-white',
