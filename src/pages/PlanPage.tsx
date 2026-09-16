@@ -13,6 +13,7 @@ import { PrintLayout } from '../components/plan-view/PrintLayout'
 import { SegmentEditor } from '../components/plan-view/SegmentEditor'
 import { SetupModal } from '../components/plan-modals/SetupModal'
 import { PlayersModal } from '../components/plan-modals/PlayersModal'
+import { getAdjacentEntry, type SlotEntry } from './planPageNavigation'
 
 export function PlanPage() {
   const { id } = useParams<{ id: string }>()
@@ -123,6 +124,16 @@ export function PlanPage() {
     if (!activeEntry || activeEntry.index < lockedCount) return
     setEditSeg({ segmentIndex: activeEntry.index, playerId, mode: 'in-game' })
   }
+
+  const jumpToEntry = (entry: SlotEntry | null) => {
+    if (!entry) return
+    setFocusMatchIndex(entry.slot.matchIndex)
+    setFocusPeriodIndex(entry.slot.periodIndex)
+    setFocusSegmentIndex(entry.index)
+  }
+
+  const prevNavigableEntry = getAdjacentEntry(slotEntries, activeEntry, -1)
+  const nextNavigableEntry = getAdjacentEntry(slotEntries, activeEntry, 1)
 
   return (
     <AppShell flowItems={buildTopFlowItems(id, 'plan')} width="full">
@@ -273,11 +284,8 @@ export function PlanPage() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => {
-                        const prev = Math.max(0, activeEntryIndex - 1)
-                        setFocusSegmentIndex(focusSlotEntries[prev]!.index)
-                      }}
-                      disabled={activeEntryIndex <= 0}
+                      onClick={() => jumpToEntry(prevNavigableEntry)}
+                      disabled={!prevNavigableEntry}
                     >
                       Prev
                     </Button>
@@ -295,11 +303,8 @@ export function PlanPage() {
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => {
-                        const next = Math.min(focusSlotEntries.length - 1, activeEntryIndex + 1)
-                        setFocusSegmentIndex(focusSlotEntries[next]!.index)
-                      }}
-                      disabled={activeEntryIndex < 0 || activeEntryIndex >= focusSlotEntries.length - 1}
+                      onClick={() => jumpToEntry(nextNavigableEntry)}
+                      disabled={!nextNavigableEntry}
                     >
                       Next
                     </Button>
