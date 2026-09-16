@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { MatchPlan, Player } from '../../types'
 import { DEFAULT_PLAYER_LEVEL } from '../../types'
 import { useSavedPlansStore } from '../../store'
@@ -13,6 +14,7 @@ interface PlayersModalProps {
 
 export function PlayersModal({ plan, onClose }: PlayersModalProps) {
   const { addMatchPlayer, updateMatchPlayer, removeMatchPlayer, updateMatch } = useSavedPlansStore()
+  const [notice, setNotice] = useState('')
 
   const { sportConfig, roster, absentPlayerIds } = plan
   const needed = sportConfig.totalOnField + sportConfig.benchSize
@@ -23,6 +25,10 @@ export function PlayersModal({ plan, onClose }: PlayersModalProps) {
   const handleUpdate = (playerId: string, data: Omit<Player, 'id'>) =>
     updateMatchPlayer(plan.id, playerId, data)
   const handleDelete = (playerId: string) => {
+    if (plan.lockedSlots?.length) {
+      setNotice('Players cannot be removed after play is recorded. Mark the player absent for the remaining plan instead.')
+      return
+    }
     if (confirm('Remove this player?')) removeMatchPlayer(plan.id, playerId)
   }
   const toggleAbsent = (playerId: string) => {
@@ -44,6 +50,10 @@ export function PlayersModal({ plan, onClose }: PlayersModalProps) {
   return (
     <ModalShell title="Players" eyebrow="Roster" onClose={onClose} maxWidth="xl">
       <div className="space-y-4">
+        {notice && <p role="status" className="text-sm text-amber-700">{notice}</p>}
+        {!!plan.lockedSlots?.length && (
+          <p className="text-xs text-slate-500">Completed play is preserved. Availability changes apply to the remaining plan.</p>
+        )}
         <div
           className={[
             'rounded-xl px-3 py-2 text-sm',
@@ -55,6 +65,9 @@ export function PlayersModal({ plan, onClose }: PlayersModalProps) {
           {ready ? ' ✓' : ` — ${needed - roster.length} more needed`}
           {absentPlayerIds.length > 0 ? ` · ${activePlayerCount} active` : ''}
         </div>
+        <p className="text-xs text-slate-500">
+          Protected: prefer no more than one of these players on the bench together. Standard players have the same rotation priority. Existing L1 players are protected; L2 and L3 are standard.
+        </p>
 
         {roster.length === 0 ? (
           <div className="py-8 text-center text-slate-400">

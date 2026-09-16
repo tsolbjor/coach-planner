@@ -7,6 +7,8 @@ export interface SchedulerInput {
   matchCount?: number
   /** segmentIndex → user override */
   pins?: Record<number, SegmentPin>
+  /** Exact contiguous historical prefix; never regenerated. */
+  lockedSlots?: TimeSlot[]
   /** Swap keeper with a benched player at the period midpoint */
   changeKeeperMidPeriod?: boolean
   /** Max consecutive segments a player can be on the bench (default 1). */
@@ -29,6 +31,8 @@ export type SchedulerWarningKind =
   | 'l1-cap-infeasible'
   | 'lock-conflict'
   | 'position-unavailable'
+  | 'invalid-input'
+  | 'substitution-limit'
 
 export interface SchedulerWarning {
   kind: SchedulerWarningKind
@@ -41,4 +45,9 @@ export interface Segment {
   periodIndex: number
   startMinute: number
   endMinute: number
+  /** False only at an extra keeper midpoint inside the substitution cadence. */
+  regularSubstitution: boolean
+  keeperBoundary: boolean
+  /** Actual unsplit substitution interval, in minutes. */
+  substitutionMinutes: number
 }

@@ -38,7 +38,7 @@ export function SubstitutionSettings({
   const segmentsPerPeriod = Math.max(1, Math.round(sportConfig.periodDurationMinutes / benchStintMinutes))
   const actualStint = sportConfig.periodDurationMinutes / segmentsPerPeriod
   const stintLabel = Number.isInteger(actualStint) ? `${actualStint} min` : `${actualStint.toFixed(1)} min`
-  const periodWord = sportConfig.periodCount > 1 ? 'half' : 'period'
+  const periodWord = 'period'
   const totalSegments = segmentsPerPeriod * sportConfig.periodCount
   const benchSpots = Math.max(1, benchSize)
 
@@ -47,7 +47,7 @@ export function SubstitutionSettings({
       <h3 className="font-semibold text-sm text-slate-700 mb-3">Substitution settings</h3>
       <div className="space-y-4">
         <NumberStepper
-          label="Minutes on bench"
+          label="Substitution interval"
           value={benchStintMinutes}
           min={0.5}
           max={sportConfig.periodDurationMinutes}
@@ -61,29 +61,42 @@ export function SubstitutionSettings({
 
         <div className="border-t border-slate-100 pt-4 space-y-3">
           <NumberStepper
-            label="Max segments on bench"
-            value={maxBenchSegments}
-            min={1}
-            max={Math.max(1, totalSegments)}
-            onChange={onMaxBenchSegmentsChange}
-          />
-          <NumberStepper
-            label="Min subs per segment"
-            value={minSubsPerSegment}
-            min={0}
-            max={benchSpots}
-            onChange={onMinSubsPerSegmentChange}
-          />
-          <NumberStepper
-            label="Max subs per segment"
-            value={maxSubsPerSegment}
-            min={Math.max(1, minSubsPerSegment)}
-            max={benchSpots}
-            onChange={onMaxSubsPerSegmentChange}
+            label="Maximum continuous rest"
+            value={Number((maxBenchSegments * actualStint).toFixed(1))}
+            min={Number(actualStint.toFixed(1))}
+            max={Number((Math.max(1, totalSegments) * actualStint).toFixed(1))}
+            step={Number(actualStint.toFixed(1))}
+            suffix=" min"
+            onChange={(minutes) => onMaxBenchSegmentsChange(Math.max(1, Math.round(minutes / actualStint)))}
           />
           <p className="text-xs text-slate-500">
-            These are fairness/churn guidelines: the planner still tries to keep at least some movement each segment when bench spots exist, while hard lineup limits are preserved.
+            Rest is measured in minutes, including keeper changes. Valid positions and coach edits take priority; any relaxed rest limit is explained in the plan.
           </p>
+          <details>
+            <summary className="cursor-pointer text-sm font-medium text-slate-700">Advanced · substitution counts</summary>
+            <div className="mt-3 space-y-3">
+              <NumberStepper
+                label="Preferred minimum substitutions"
+                value={minSubsPerSegment}
+                min={0}
+                max={benchSpots}
+                onChange={(value) => {
+                  onMinSubsPerSegmentChange(value)
+                  if (value > maxSubsPerSegment) onMaxSubsPerSegmentChange(value)
+                }}
+              />
+              <NumberStepper
+                label="Preferred maximum substitutions"
+                value={maxSubsPerSegment}
+                min={Math.max(1, minSubsPerSegment)}
+                max={benchSpots}
+                onChange={onMaxSubsPerSegmentChange}
+              />
+              <p className="text-xs text-slate-500">
+                Applies at regular substitution boundaries. The planner normally makes at least one change when possible; rest and lineup requirements can override these preferences.
+              </p>
+            </div>
+          </details>
         </div>
 
         <div className="border-t border-slate-100 pt-4">

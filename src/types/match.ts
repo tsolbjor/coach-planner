@@ -23,6 +23,7 @@ export interface TimeSlot {
   /** Derived overlay: lineup slotId → playerId. Populated by position pass. */
   positions: Record<string, string | null>
   /**
+   * Legacy saved-data only. New schedules use ordinary interval boundaries.
    * If set, a keeper swap happens inside this segment at `atMinute`. The
    * segment's main fields (gkId / fieldIds / benchIds / positions) describe the
    * state AFTER the swap; pre.* describes the state BEFORE.
@@ -48,6 +49,10 @@ export interface SegmentPin {
   fieldIds?: string[]
   /** Exact bench player ids — if set, locks the bench composition */
   benchIds?: string[]
+  /** Require these players outfield without locking the rest of the lineup. */
+  requiredFieldIds?: string[]
+  /** Require these players on the bench without locking its full composition. */
+  requiredBenchIds?: string[]
   /** Player ids absent for this segment — excluded from rotation; no pitch-time credit */
   absentIds?: string[]
   /** Absent ids that still receive pitch-time credit for fairness (e.g. mid-game injury) */
@@ -66,13 +71,18 @@ export interface MatchPlan {
   /** How many matches to generate in this plan (default 1) */
   matchCount: number
   slots: TimeSlot[]
+  warnings?: { kind: string; message: string }[]
+  /** Immutable contiguous prefix of completed play, replayed during regeneration. */
+  lockedSlots?: TimeSlot[]
   /** Player.id[] absent from this match */
   absentPlayerIds: string[]
   /** segmentIndex → user override. Solver respects these and auto-fills the rest. */
   pins: Record<number, SegmentPin>
+  /** Version 1 pins use canonical interval indices, even when no slots can be generated. */
+  pinSchemaVersion?: 1
   /** When true, swap keeper with a benched player at the period midpoint */
   changeKeeperMidPeriod: boolean
-  /** Max consecutive segments a player can stay on bench (default 1 = no back-to-back). */
+  /** Continuous bench limit in original substitution intervals (midpoint splits do not count twice). */
   maxBenchSegments: number
   /** Minimum substitutions enforced per segment boundary (default 0 = no floor). */
   minSubsPerSegment: number

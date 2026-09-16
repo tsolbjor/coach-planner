@@ -1,4 +1,4 @@
-import type { Player, SportConfig } from '../types'
+import type { Player, SportConfig, TimeSlot } from '../types'
 import type { Segment, SchedulerWarning } from './types'
 import { canPlayPosition, maxMatch } from './maxMatch'
 
@@ -8,6 +8,7 @@ export interface PositionOverlayInput {
   segments: Segment[]
   gkBySegment: (string | null)[]
   fieldBySegment: string[][]
+  lockedSlots?: TimeSlot[]
 }
 
 export interface PositionOverlayResult {
@@ -62,7 +63,16 @@ export function buildPositionOverlay(input: PositionOverlayInput): PositionOverl
     const positions: Record<string, string | null> = {}
     if (keeperSlotId) positions[keeperSlotId] = gkId
 
-    if (samePeriod && prevPositions) {
+    const locked = input.lockedSlots?.[seg.segmentIndex]
+    if (locked) {
+      Object.assign(positions, locked.positions)
+      if (!samePeriod) {
+        for (const slot of outfieldSlots) {
+          const pid = positions[slot.slotId]
+          if (pid) bumpStart(pid, slot.positionTypeId)
+        }
+      }
+    } else if (samePeriod && prevPositions) {
       const cont = assignWithContinuity(outfieldSlots, outfieldPool, prevPositions)
       for (const slot of outfieldSlots) positions[slot.slotId] = cont[slot.slotId] ?? null
     } else {
@@ -210,7 +220,7 @@ function assignWithContinuity(
     unfilled = outfieldSlots.filter((s) => !result[s.slotId])
   }
 
-  if (unfilled.length > 0 && outfieldPool.length >= outfieldSlots.length) {
+  if (unfilled.length > 0) {
     const fullMatch = maxMatch(outfieldSlots, outfieldPool, canPlayPosition, preferPlayerBySlot)
     for (const slot of outfieldSlots) result[slot.slotId] = fullMatch.get(slot.slotId) ?? null
   }
