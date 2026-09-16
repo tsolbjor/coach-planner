@@ -1,12 +1,50 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it } from 'vitest'
 import { makeFiveASide, makePlayers } from '../../../scheduler/__tests__/fixtures'
 import { NumberStepper } from '../../common/NumberStepper'
+import { PageHeader } from '../../common/PageHeader'
+import { Timeline } from '../../plan-view/Timeline'
 import { PlayerListItem } from '../../roster/PlayerListItem'
 import { ModalShell } from '../ModalShell'
 
 describe('mobile modal layout', () => {
+  it('contains absolute timeline labels so they cannot expand the modal viewport', () => {
+    const html = renderToStaticMarkup(createElement(Timeline, {
+      slots: [{
+        id: 'slot-1',
+        matchIndex: 0,
+        periodIndex: 0,
+        startMinute: 0,
+        endMinute: 5,
+        gkId: null,
+        fieldIds: [],
+        benchIds: [],
+        absentIds: [],
+        absentCreditedIds: [],
+        positions: {},
+      }],
+      players: makePlayers(7),
+      sportConfig: makeFiveASide(),
+      onCellClick: () => {},
+    }))
+
+    expect(html).toContain('class="relative overflow-x-auto"')
+    expect(html).toContain('sr-only')
+  })
+
+  it('constrains plan toolbar actions to the available page width', () => {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, {
+      children: createElement(PageHeader, {
+        title: 'Plan',
+        action: 'Players Setup Share Print',
+      }),
+    }))
+
+    expect(html).toContain('ml-auto max-w-full shrink-0')
+  })
+
   it('bounds the modal to the dynamic viewport and keeps its header outside scrolling content', () => {
     const html = renderToStaticMarkup(createElement(ModalShell, {
       title: 'Players',

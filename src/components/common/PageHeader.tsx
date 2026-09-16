@@ -23,7 +23,7 @@ export function PageHeader({ title, backTo, action }: PageHeaderProps) {
         </button>
       )}
       <h1 className="text-xl font-bold flex-1 min-w-0">{title}</h1>
-      {action && <div className="ml-auto shrink-0">{action}</div>}
+      {action && <div className="ml-auto max-w-full shrink-0">{action}</div>}
     </header>
   )
 }
