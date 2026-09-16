@@ -13,7 +13,7 @@ import { PrintLayout } from '../components/plan-view/PrintLayout'
 import { SegmentEditor } from '../components/plan-view/SegmentEditor'
 import { SetupModal } from '../components/plan-modals/SetupModal'
 import { PlayersModal } from '../components/plan-modals/PlayersModal'
-import { getAdjacentEntry } from './planPageNavigation'
+import { getAdjacentEntry, type SlotEntry } from './planPageNavigation'
 
 export function PlanPage() {
   const { id } = useParams<{ id: string }>()
@@ -125,7 +125,7 @@ export function PlanPage() {
     setEditSeg({ segmentIndex: activeEntry.index, playerId, mode: 'in-game' })
   }
 
-  const jumpToEntry = (entry: { index: number; slot: { matchIndex: number; periodIndex: number } } | null) => {
+  const jumpToEntry = (entry: SlotEntry | null) => {
     if (!entry) return
     setFocusMatchIndex(entry.slot.matchIndex)
     setFocusPeriodIndex(entry.slot.periodIndex)
