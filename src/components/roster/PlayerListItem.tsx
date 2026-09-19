@@ -71,8 +71,8 @@ export function PlayerListItem({
         absent ? 'rounded-xl bg-amber-50/70 opacity-70' : '',
       ].join(' ')}
     >
-      <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 shrink-0">
+      <div className="flex flex-wrap items-center gap-3 md:flex-nowrap">
+        <div className="flex w-full min-w-0 items-center gap-2 md:w-auto md:shrink-0">
           <input
             type="text"
             value={name}
@@ -97,7 +97,7 @@ export function PlayerListItem({
               }
             }}
             placeholder="Name"
-            className={[NAME_INPUT_CLASS, 'w-36 sm:w-44 rounded-lg border border-slate-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'].join(' ')}
+            className={[NAME_INPUT_CLASS, 'min-w-0 flex-1 md:w-44 md:flex-none rounded-lg border border-slate-300 px-3 py-1.5 text-base md:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'].join(' ')}
           />
           <select
             value={level === 1 ? 1 : 2}
@@ -108,15 +108,15 @@ export function PlayerListItem({
             }}
             aria-label="Bench-group preference"
             title="Avoid benching more than one protected player together, when possible"
-            className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-blue-500"
+            className="w-28 shrink-0 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-blue-500"
           >
             <option value={1}>Protected</option>
             <option value={2}>Standard</option>
           </select>
         </div>
 
-        <div className="min-w-0 flex-1 overflow-x-auto">
-          <div className="flex min-w-max items-center gap-1.5">
+        <div className="min-w-0 flex-1 md:overflow-x-auto">
+          <div className="flex flex-wrap items-center gap-1.5 md:min-w-max md:flex-nowrap">
             {sportConfig.positionTypes.map((position) => (
               <PositionBadge
                 key={position.id}

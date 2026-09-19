@@ -194,7 +194,7 @@ export function Timeline({ slots: sourceSlots, players, onCellClick }: TimelineP
   })
 
   return (
-    <div className="overflow-x-auto">
+    <div className="relative overflow-x-auto">
       <table className="w-full min-w-max border-separate border-spacing-0 text-xs">
         <thead>
           <tr>

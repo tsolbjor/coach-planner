@@ -62,9 +62,9 @@ export function NumberStepper({
   }
 
   return (
-    <div className="flex items-center gap-3">
-      {label && <span className="text-sm text-slate-600 flex-1">{label}</span>}
-      <div className="flex items-center border border-slate-300 rounded-xl overflow-hidden">
+    <div className="flex flex-wrap items-center gap-2 sm:flex-nowrap sm:gap-3">
+      {label && <span className="text-sm text-slate-600 flex-1 basis-full sm:basis-auto">{label}</span>}
+      <div className="flex shrink-0 items-center border border-slate-300 rounded-xl overflow-hidden">
         <button
           type="button"
           onClick={() => onChange(clamp(value - step))}
@@ -76,7 +76,7 @@ export function NumberStepper({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
           </svg>
         </button>
-        <label className="flex items-center px-2 py-2 min-w-[3rem]">
+        <label className="flex w-20 items-center px-2 py-2">
           <input
             type="number"
             inputMode="decimal"
@@ -103,9 +103,9 @@ export function NumberStepper({
                 ;(e.target as HTMLInputElement).blur()
               }
             }}
-            className="w-full bg-transparent text-center font-semibold tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            className="min-w-0 w-full bg-transparent text-center font-semibold tabular-nums focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
           />
-          {suffix && <span className="text-xs font-normal text-slate-500 ml-0.5">{suffix}</span>}
+          {suffix && <span className="shrink-0 text-xs font-normal text-slate-500 ml-0.5">{suffix}</span>}
         </label>
         <button
           type="button"
