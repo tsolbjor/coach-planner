@@ -24,3 +24,8 @@ dist-ssr/
 
 # OS
 .DS_Store
+
+# Vercel / env
+.vercel
+.env*.local
+.env
