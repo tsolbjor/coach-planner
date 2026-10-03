@@ -1,5 +1,5 @@
 import type { SavedItem } from '../types'
-import type { PlansApi, PutOutcome, RemoteDocument, RemoteSummary } from '../sync/types'
+import type { MemberRole, PlansApi, PutOutcome, RemoteDocument, RemoteSummary, SharingInfo } from '../sync/types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -11,8 +11,8 @@ export class ApiError extends Error {
 
 type GetToken = () => Promise<string | null>
 
-export function createPlansApi(getToken: GetToken, base = '/api'): PlansApi {
-  async function request(path: string, init: RequestInit = {}): Promise<Response> {
+function createRequester(getToken: GetToken, base: string) {
+  return async function request(path: string, init: RequestInit = {}): Promise<Response> {
     const token = await getToken()
     if (!token) throw new ApiError(401, 'Not signed in')
     return fetch(`${base}${path}`, {
@@ -20,14 +20,21 @@ export function createPlansApi(getToken: GetToken, base = '/api'): PlansApi {
       headers: { ...init.headers, authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     })
   }
+}
 
-  async function fail(res: Response): Promise<never> {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null
-    throw new ApiError(res.status, body?.error ?? res.statusText)
-  }
+async function fail(res: Response): Promise<never> {
+  const body = (await res.json().catch(() => null)) as { error?: string } | null
+  throw new ApiError(res.status, body?.error ?? res.statusText)
+}
 
-  const planPath = (id: string) => `/plans/${encodeURIComponent(id)}`
+async function expectOk(res: Response): Promise<void> {
+  if (!res.ok) await fail(res)
+}
 
+const planPath = (id: string) => `/plans/${encodeURIComponent(id)}`
+
+export function createPlansApi(getToken: GetToken, base = '/api'): PlansApi {
+  const request = createRequester(getToken, base)
   return {
     async list() {
       const res = await request('/plans')
@@ -61,4 +68,52 @@ export function createPlansApi(getToken: GetToken, base = '/api'): PlansApi {
       if (!res.ok && res.status !== 404) await fail(res)
     },
   }
+}
+
+export interface SharingApi {
+  getSharing(planId: string): Promise<SharingInfo>
+  createInvite(planId: string, role: MemberRole): Promise<{ id: string; token: string; role: MemberRole; expiresAt: string }>
+  revokeInvite(planId: string, inviteId: string): Promise<void>
+  updateMember(planId: string, userId: string, role: MemberRole): Promise<void>
+  removeMember(planId: string, userId: string): Promise<void>
+  acceptInvite(token: string): Promise<{ planId: string; role: string }>
+}
+
+export function createSharingApi(getToken: GetToken, base = '/api'): SharingApi {
+  const request = createRequester(getToken, base)
+  return {
+    async getSharing(planId) {
+      const res = await request(`${planPath(planId)}/members`)
+      if (!res.ok) return fail(res)
+      return (await res.json()) as SharingInfo
+    },
+    async createInvite(planId, role) {
+      const res = await request(`${planPath(planId)}/invites`, { method: 'POST', body: JSON.stringify({ role }) })
+      if (!res.ok) return fail(res)
+      return res.json()
+    },
+    async revokeInvite(planId, inviteId) {
+      await expectOk(await request(`${planPath(planId)}/invites/${encodeURIComponent(inviteId)}`, { method: 'DELETE' }))
+    },
+    async updateMember(planId, userId, role) {
+      await expectOk(await request(`${planPath(planId)}/members/${encodeURIComponent(userId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ role }),
+      }))
+    },
+    async removeMember(planId, userId) {
+      await expectOk(await request(`${planPath(planId)}/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }))
+    },
+    async acceptInvite(token) {
+      const res = await request('/invites/accept', { method: 'POST', body: JSON.stringify({ token }) })
+      if (!res.ok) return fail(res)
+      return res.json()
+    },
+  }
+}
+
+/** Absolute link that opens the invite page of this app. */
+export function inviteUrl(token: string): string {
+  const base = window.location.href.split('#')[0]
+  return `${base}#/invite/${token}`
 }

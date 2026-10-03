@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { Db } from './db/client.js'
 import { planMembers, plans, users } from './db/schema.js'
 import { HttpError } from './auth.js'
+import { ensureUser } from './users.js'
 
 export type PlanRole = 'owner' | 'editor' | 'viewer'
 export type PlanKind = 'match' | 'tournament'
@@ -13,6 +14,8 @@ export interface PlanSummary {
   name: string
   version: number
   role: PlanRole
+  /** Display name of the owner, for plans shared with the caller. */
+  ownerName: string | null
   updatedAt: string
 }
 
@@ -44,7 +47,7 @@ function roleOf(ownerId: string, memberRole: 'editor' | 'viewer' | null, userId:
 const iso = (d: Date) => d.toISOString()
 
 /** Load a plan row (deleted or not) with the caller's role, or null when no such id exists. */
-async function loadRow(db: Db, planId: string, userId: string) {
+export async function loadRow(db: Db, planId: string, userId: string) {
   const [row] = await db
     .select({
       id: plans.id,
@@ -56,9 +59,11 @@ async function loadRow(db: Db, planId: string, userId: string) {
       updatedAt: plans.updatedAt,
       deletedAt: plans.deletedAt,
       memberRole: planMembers.role,
+      ownerName: users.name,
     })
     .from(plans)
     .leftJoin(planMembers, and(eq(planMembers.planId, plans.id), eq(planMembers.userId, userId)))
+    .leftJoin(users, eq(users.id, plans.ownerId))
     .where(eq(plans.id, planId))
   if (!row) return null
   return { ...row, role: roleOf(row.ownerId, row.memberRole, userId) }
@@ -71,6 +76,7 @@ function toDocument(row: NonNullable<Awaited<ReturnType<typeof loadRow>>>): Plan
     name: row.name,
     version: row.version,
     role: row.role!,
+    ownerName: row.ownerName,
     updatedAt: iso(row.updatedAt),
     data: row.data,
   }
@@ -86,9 +92,11 @@ export async function listPlans(db: Db, userId: string): Promise<PlanSummary[]> 
       version: plans.version,
       updatedAt: plans.updatedAt,
       memberRole: planMembers.role,
+      ownerName: users.name,
     })
     .from(plans)
     .leftJoin(planMembers, and(eq(planMembers.planId, plans.id), eq(planMembers.userId, userId)))
+    .leftJoin(users, eq(users.id, plans.ownerId))
     .where(and(isNull(plans.deletedAt), or(eq(plans.ownerId, userId), eq(planMembers.userId, userId))))
     .orderBy(plans.updatedAt)
   return rows.map((row) => ({
@@ -97,6 +105,7 @@ export async function listPlans(db: Db, userId: string): Promise<PlanSummary[]> 
     name: row.name,
     version: row.version,
     role: roleOf(row.ownerId, row.memberRole, userId)!,
+    ownerName: row.ownerName,
     updatedAt: iso(row.updatedAt),
   }))
 }
@@ -118,7 +127,7 @@ export async function putPlan(db: Db, planId: string, userId: string, body: PutP
 
   if (!row) {
     if (body.baseVersion !== 0) throw new HttpError(410, 'Plan was deleted')
-    await db.insert(users).values({ id: userId }).onConflictDoNothing()
+    await ensureUser(db, userId)
     const [created] = await db
       .insert(plans)
       .values({ id: planId, ownerId: userId, kind: body.kind, name: body.data.name, data: body.data })

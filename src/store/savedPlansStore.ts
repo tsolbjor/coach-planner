@@ -408,7 +408,10 @@ export const useSavedPlansStore = create<SavedPlansState>()(
           const items = idx >= 0 ? s.items.map((i, n) => (n === idx ? item : i)) : [...s.items, item]
           return {
             items,
-            syncMeta: { ...s.syncMeta, [doc.id]: { version: doc.version, role: doc.role, hash: stableHash(item) } },
+            syncMeta: {
+              ...s.syncMeta,
+              [doc.id]: { version: doc.version, role: doc.role, ownerName: doc.ownerName, hash: stableHash(item) },
+            },
           }
         }),
 
@@ -478,7 +481,19 @@ export const useSavedPlansStore = create<SavedPlansState>()(
  * signed-out bucket for `null`). Plans made while signed out are claimed by
  * the first account that signs in on this device.
  */
-export async function setPlanStorageScope(userId: string | null): Promise<void> {
+let scopeSettled: Promise<void> = Promise.resolve()
+
+/** Resolves once the most recent account switch has finished loading plans. */
+export function whenPlanScopeSettled(): Promise<void> {
+  return scopeSettled
+}
+
+export function setPlanStorageScope(userId: string | null): Promise<void> {
+  scopeSettled = switchPlanStorageScope(userId)
+  return scopeSettled
+}
+
+async function switchPlanStorageScope(userId: string | null): Promise<void> {
   const persistApi = useSavedPlansStore.persist
   const claimed = userId ? claimAnonymousPlans(userId) : false
   writeActiveScope(userId)

@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/pglite/migrator'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { setDb, type Db } from '../db/client.js'
 import * as schema from '../db/schema.js'
+import { setProfileFetcher } from '../users.js'
 
 // Treat the bearer token as the user id so handlers can be exercised end to end.
 vi.mock('../auth.js', async (importOriginal) => {
@@ -19,7 +20,7 @@ vi.mock('../auth.js', async (importOriginal) => {
 })
 
 const list = await import('../../api/plans/index.js')
-const item = await import('../../api/plans/[id].js')
+const item = await import('../../api/plans/[id]/index.js')
 
 let db: Db
 
@@ -28,6 +29,7 @@ beforeEach(async () => {
   db = drizzle(client, { schema }) as unknown as Db
   await migrate(db as never, { migrationsFolder: 'server/db/migrations' })
   setDb(db)
+  setProfileFetcher(async () => ({ email: null, name: null }))
 })
 
 const url = (id = '') => `https://coach.test/api/plans${id ? `/${id}` : ''}`

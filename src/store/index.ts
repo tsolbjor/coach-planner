@@ -1,1 +1,1 @@
-export { useSavedPlansStore, setPlanStorageScope, newPlanId } from './savedPlansStore'
+export { useSavedPlansStore, setPlanStorageScope, whenPlanScopeSettled, newPlanId } from './savedPlansStore'

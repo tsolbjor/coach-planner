@@ -42,7 +42,7 @@ async function push(api: PlansApi, item: SavedItem, baseVersion: number): Promis
   switch (outcome.kind) {
     case 'saved':
       // Record the hash of what was sent; edits made meanwhile stay dirty for the next run.
-      store().setSyncMeta(id, { version: outcome.version, role: store().syncMeta[id]?.role ?? 'owner', hash: sentHash })
+      store().setSyncMeta(id, { ...store().syncMeta[id], version: outcome.version, role: store().syncMeta[id]?.role ?? 'owner', hash: sentHash })
       return
     case 'conflict':
       keepBoth(outcome.current)

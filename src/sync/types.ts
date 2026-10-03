@@ -8,6 +8,8 @@ export interface SyncMeta {
   role: PlanRole
   /** stableHash of the local item as last synced; differs once edited locally. */
   hash: string
+  /** Owner's display name, shown for plans shared with this account. */
+  ownerName?: string | null
 }
 
 export interface RemoteSummary {
@@ -16,6 +18,7 @@ export interface RemoteSummary {
   name: string
   version: number
   role: PlanRole
+  ownerName: string | null
   updatedAt: string
 }
 
@@ -35,4 +38,25 @@ export interface PlansApi {
   get(id: string): Promise<RemoteDocument | null>
   put(item: SavedItem, baseVersion: number): Promise<PutOutcome>
   remove(id: string): Promise<void>
+}
+
+export type MemberRole = 'editor' | 'viewer'
+
+export interface Person {
+  userId: string
+  name: string | null
+  email: string | null
+}
+
+export interface InviteSummary {
+  id: string
+  role: MemberRole
+  expiresAt: string
+  uses: number
+}
+
+export interface SharingInfo {
+  owner: Person
+  members: (Person & { role: MemberRole })[]
+  invites: InviteSummary[]
 }

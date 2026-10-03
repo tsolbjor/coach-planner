@@ -2,6 +2,7 @@ import { createHashRouter, Outlet, RouterProvider, useLocation, useNavigate } fr
 import { HomePage } from './pages/HomePage'
 import { HelpModal } from './pages/HelpPage'
 import { ImportPage } from './pages/ImportPage'
+import { InvitePage } from './pages/InvitePage'
 import { PlanPage } from './pages/PlanPage'
 
 function RootLayout() {
@@ -38,6 +39,7 @@ const router = createHashRouter([
       { index: true, element: <HomePage /> },
       { path: 'import', element: <ImportPage /> },
       { path: 'plan/:id', element: <PlanPage /> },
+      { path: 'invite/:token', element: <InvitePage /> },
     ],
   },
 ])

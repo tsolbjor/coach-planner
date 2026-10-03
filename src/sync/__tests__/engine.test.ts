@@ -29,7 +29,7 @@ class FakeServer {
   doc(id: string, user: string): RemoteDocument {
     const d = this.docs.get(id)!
     // Simulate the jsonb round trip.
-    return { id, kind: d.kind, name: d.data.name, version: d.version, role: this.role(id, user)!, updatedAt: '', data: JSON.parse(JSON.stringify(d.data)) }
+    return { id, kind: d.kind, name: d.data.name, version: d.version, role: this.role(id, user)!, ownerName: d.owner, updatedAt: '', data: JSON.parse(JSON.stringify(d.data)) }
   }
 
   api(user: string): PlansApi {

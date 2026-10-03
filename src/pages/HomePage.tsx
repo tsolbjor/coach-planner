@@ -276,7 +276,7 @@ function ChipButton({
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { items, setCurrentMatch, createMatch, deleteSaved } = useSavedPlansStore()
+  const { items, syncMeta, setCurrentMatch, createMatch, deleteSaved } = useSavedPlansStore()
   const [creating, setCreating] = useState(false)
 
   const matchPlans = useMemo(
@@ -336,7 +336,10 @@ export function HomePage() {
             <p className="text-sm font-medium text-slate-500">
               {matchPlans.length} plan{matchPlans.length !== 1 ? 's' : ''}
             </p>
-            {matchPlans.map((plan) => (
+            {matchPlans.map((plan) => {
+              const sync = syncMeta[plan.id]
+              const shared = sync && sync.role !== 'owner'
+              return (
               <Card
                 key={plan.id}
                 className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -350,6 +353,11 @@ export function HomePage() {
                   <p className="mt-0.5 text-sm text-slate-500">
                     {plan.sportConfig.name} · {plan.roster.length} players · {planDate(plan)}
                   </p>
+                  {shared && (
+                    <p className="mt-1 text-xs font-medium text-blue-700">
+                      Shared by {sync.ownerName ?? 'another coach'} · {sync.role === 'editor' ? 'can edit' : 'view only'}
+                    </p>
+                  )}
                 </button>
 
                 <div className="flex shrink-0 gap-2">
@@ -359,14 +367,18 @@ export function HomePage() {
                   <Button
                     variant="danger"
                     onClick={() => {
-                      if (confirm(`Delete "${plan.name}"?`)) deleteSaved(plan.id)
+                      const question = shared
+                        ? `Leave "${plan.name}"? It will be removed from your plans; the owner keeps it.`
+                        : `Delete "${plan.name}"?`
+                      if (confirm(question)) deleteSaved(plan.id)
                     }}
                   >
-                    Delete
+                    {shared ? 'Leave' : 'Delete'}
                   </Button>
                 </div>
               </Card>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>

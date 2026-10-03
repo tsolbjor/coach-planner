@@ -132,6 +132,11 @@ Every handler does an explicit membership check in SQL (`where owner_id = $u or 
   - Sync runs on sign-in, ~1.5 s after edits, on focus/online, and every 60 s.
   - No upload prompt yet: Phase 1's claim already moves signed-out plans into the account.
   - Local dev, preview and production share one Neon database — split before real users arrive.
+- **Phase 3 — done.** Notes:
+  - Invites are links only (no email sending); multi-use, 14-day expiry, owner creates/revokes. Accepting never downgrades an existing role.
+  - Owners manage members (inline role select / remove); editors can see who has access; viewers see only who shared it.
+  - Display names come from Clerk on first save/share (`users.name/email`).
+  - Viewers get a read-only PlanPage (no rename, players, setup, pins or segment edits). Shared plans show "Shared by …" on Home, and Delete becomes Leave.
 
 ## Testing
 

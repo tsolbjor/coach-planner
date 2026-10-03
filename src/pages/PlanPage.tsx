@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { buildShareUrl } from '../utils/shareUrl'
 import { getBoundaryTransition } from '../utils/slotTransitions'
 import { formatMinute } from '../utils/slotIntervals'
 import { useSavedPlansStore } from '../store'
@@ -13,6 +12,7 @@ import { PrintLayout } from '../components/plan-view/PrintLayout'
 import { SegmentEditor } from '../components/plan-view/SegmentEditor'
 import { SetupModal } from '../components/plan-modals/SetupModal'
 import { PlayersModal } from '../components/plan-modals/PlayersModal'
+import { ShareDialog } from '../components/sharing/ShareDialog'
 import { getAdjacentEntry, type SlotEntry } from './planPageNavigation'
 
 export function PlanPage() {
@@ -21,7 +21,7 @@ export function PlanPage() {
   const { items, updateMatch, setSegmentPins, clearAllPins } = useSavedPlansStore()
   const [editingName, setEditingName] = useState(false)
   const [nameInput, setNameInput] = useState('')
-  const [shareCopied, setShareCopied] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [playersOpen, setPlayersOpen] = useState(false)
   const [editSeg, setEditSeg] = useState<{ segmentIndex: number; playerId: string; mode: 'plan' | 'in-game' } | null>(null)
@@ -31,6 +31,9 @@ export function PlanPage() {
   const [focusSegmentIndex, setFocusSegmentIndex] = useState<number | null>(null)
 
   const item = items.find((entry) => entry.kind === 'match' && entry.plan.id === id)
+  const sync = useSavedPlansStore((s) => (id ? s.syncMeta[id] : undefined))
+  // Shared view-only plans: the server rejects edits, so the UI offers none.
+  const readOnly = sync?.role === 'viewer'
 
   const slotEntries = useMemo(() => {
     if (!item || item.kind !== 'match') return []
@@ -109,19 +112,8 @@ export function PlanPage() {
     setEditingName(false)
   }
 
-  const handleShare = () => {
-    const url = buildShareUrl(plan)
-    navigator.clipboard
-      .writeText(url)
-      .then(() => {
-        setShareCopied(true)
-        setTimeout(() => setShareCopied(false), 2000)
-      })
-      .catch(() => alert('Copy failed — try again'))
-  }
-
   const openActiveSegmentEditor = (playerId: string) => {
-    if (!activeEntry || activeEntry.index < lockedCount) return
+    if (readOnly || !activeEntry || activeEntry.index < lockedCount) return
     setEditSeg({ segmentIndex: activeEntry.index, playerId, mode: 'in-game' })
   }
 
@@ -140,7 +132,9 @@ export function PlanPage() {
       <div className="no-print">
         <PageHeader
           title={
-            editingName ? (
+            readOnly ? (
+              <span className="font-semibold text-slate-800">{plan.name}</span>
+            ) : editingName ? (
               <input
                 autoFocus
                 value={nameInput}
@@ -167,19 +161,23 @@ export function PlanPage() {
           }
           action={
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="secondary" onClick={() => setPlayersOpen(true)}>
-                Players ({plan.roster.length})
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setSetupOpen(true)}>
-                Setup
-              </Button>
-              {editablePinCount > 0 && (
+              {!readOnly && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => setPlayersOpen(true)}>
+                    Players ({plan.roster.length})
+                  </Button>
+                  <Button size="sm" variant="secondary" onClick={() => setSetupOpen(true)}>
+                    Setup
+                  </Button>
+                </>
+              )}
+              {!readOnly && editablePinCount > 0 && (
                 <Button size="sm" variant="secondary" onClick={() => clearAllPins(id)}>
                   Clear {editablePinCount} pin{editablePinCount === 1 ? '' : 's'}
                 </Button>
               )}
-              <Button size="sm" variant="secondary" onClick={handleShare}>
-                {shareCopied ? 'Copied!' : 'Share'}
+              <Button size="sm" variant="secondary" onClick={() => setShareOpen(true)}>
+                Share
               </Button>
               <Button size="sm" variant="secondary" onClick={() => window.print()}>
                 Print
@@ -187,6 +185,12 @@ export function PlanPage() {
             </div>
           }
         />
+
+        {readOnly && (
+          <p className="mb-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            View only — shared with you by {sync?.ownerName ?? 'another coach'}.
+          </p>
+        )}
 
         <p className="mb-4 text-xs text-slate-500">
           {plan.sportConfig.name} · {plan.sportConfig.periodCount}×{plan.sportConfig.periodDurationMinutes} min ·{' '}
@@ -321,7 +325,9 @@ export function PlanPage() {
                           {formatMinute(activeEntry.slot.startMinute)}–{formatMinute(activeEntry.slot.endMinute)}
                         </p>
                         <p className="mt-1 text-xs text-slate-500">
-                          {activeEntry.index < lockedCount
+                          {readOnly
+                            ? 'View only.'
+                            : activeEntry.index < lockedCount
                             ? 'Completed play is locked and cannot be edited.'
                             : 'Adjust this interval; earlier play is preserved and the remaining plan rebalances.'}
                         </p>
@@ -397,7 +403,8 @@ export function PlanPage() {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="px-3 py-2 border-b border-slate-100 bg-slate-50">
                 <p className="text-xs font-semibold text-slate-500">
-                  Player timeline · {lockedCount ? 'completed play is locked; click a remaining interval to edit' : 'click any cell to edit'}
+                  Player timeline
+                  {readOnly ? '' : lockedCount ? ' · completed play is locked; click a remaining interval to edit' : ' · click any cell to edit'}
                 </p>
               </div>
               <div className="p-2 lg:p-4">
@@ -406,7 +413,7 @@ export function PlanPage() {
                   sportConfig={plan.sportConfig}
                   players={plan.roster}
                   onCellClick={(segmentIndex, playerId) => {
-                    if (segmentIndex >= lockedCount) setEditSeg({ segmentIndex, playerId, mode: 'plan' })
+                    if (!readOnly && segmentIndex >= lockedCount) setEditSeg({ segmentIndex, playerId, mode: 'plan' })
                   }}
                 />
               </div>
@@ -543,10 +550,11 @@ export function PlanPage() {
         <PrintLayout plan={plan} />
       </div>
 
-      {setupOpen && <SetupModal plan={plan} onClose={() => setSetupOpen(false)} />}
-      {playersOpen && <PlayersModal plan={plan} onClose={() => setPlayersOpen(false)} />}
+      {shareOpen && <ShareDialog plan={plan} onClose={() => setShareOpen(false)} />}
+      {setupOpen && !readOnly && <SetupModal plan={plan} onClose={() => setSetupOpen(false)} />}
+      {playersOpen && !readOnly && <PlayersModal plan={plan} onClose={() => setPlayersOpen(false)} />}
 
-      {editSeg && editSeg.segmentIndex >= lockedCount && plan.slots[editSeg.segmentIndex] && (
+      {editSeg && !readOnly && editSeg.segmentIndex >= lockedCount && plan.slots[editSeg.segmentIndex] && (
         <SegmentEditor
           slots={plan.slots}
           segmentIndex={editSeg.segmentIndex}
