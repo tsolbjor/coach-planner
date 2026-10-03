@@ -1,6 +1,6 @@
 import { sql } from 'drizzle-orm'
-import { bearerToken, errorResponse, json, requireUserId } from '../server/auth'
-import { getDb } from '../server/db/client'
+import { bearerToken, errorResponse, json, requireUserId } from '../server/auth.js'
+import { getDb } from '../server/db/client.js'
 
 /**
  * Liveness + wiring check. Always pings the database; when a bearer token is

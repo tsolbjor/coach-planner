@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { bearerToken, errorResponse, HttpError, requireUserId } from '../auth'
+import { bearerToken, errorResponse, HttpError, requireUserId } from '../auth.js'
 
 const req = (authorization?: string) =>
   new Request('https://example.test/api/health', { headers: authorization ? { authorization } : {} })
