@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { nanoid } from 'nanoid'
-import { useSavedPlansStore } from '../store'
+import { newPlanId, useSavedPlansStore } from '../store'
 import { decodePlan } from '../utils/shareUrl'
 import { AppShell } from '../components/common/AppShell'
 import { Button } from '../components/common/Button'
@@ -31,7 +30,7 @@ export function ImportPage() {
     }
 
     const now = new Date().toISOString()
-    const newPlan = { ...plan, id: nanoid(8), createdAt: now, updatedAt: now }
+    const newPlan = { ...plan, id: newPlanId(), createdAt: now, updatedAt: now }
     saveMatch(newPlan)
     navigate(`/plan/${newPlan.id}`, { replace: true })
   }, [])

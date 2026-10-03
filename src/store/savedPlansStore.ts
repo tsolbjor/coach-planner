@@ -5,6 +5,8 @@ import { normalizePlayerLevel, type SavedItem, type MatchPlan, type SegmentPin, 
 import { generatePlan } from '../scheduler'
 import { buildSegments } from '../scheduler/segmentBuilder'
 import { getSlotIntervals } from '../utils/slotIntervals'
+import { stableHash } from '../sync/hash'
+import type { RemoteDocument, SyncMeta } from '../sync/types'
 import { claimAnonymousPlans, plansStorageKey, readActiveScope, writeActiveScope } from './planStorageScope'
 
 function regenSlots(plan: MatchPlan): MatchPlan {
@@ -99,9 +101,16 @@ function preserveLockedPins(plan: MatchPlan, pins: Record<number, SegmentPin>): 
   }
 }
 
+/** Plan ids are generated on devices and must not collide across accounts on the server. */
+export function newPlanId(): string {
+  return nanoid(16)
+}
+
 interface SavedPlansState {
   items: SavedItem[]
   currentMatchId: string | null
+  /** Server sync bookkeeping by plan id. An id without an item marks a pending server delete. */
+  syncMeta: Record<string, SyncMeta>
   /** Create a new match plan, persist it, and return it */
   createMatch: (base: Omit<MatchPlan, 'id' | 'createdAt' | 'updatedAt'>) => MatchPlan
   setCurrentMatch: (planId: string | null) => void
@@ -122,6 +131,16 @@ interface SavedPlansState {
   setSegmentPins: (planId: string, updates: Record<number, SegmentPin | null>, lockBeforeIndex?: number) => void
   clearSegmentPin: (planId: string, segmentIndex: number) => void
   clearAllPins: (planId: string) => void
+  /** Sync engine: store a server document as the synced local copy. */
+  applyRemote: (doc: RemoteDocument) => void
+  /** Sync engine: record or clear server bookkeeping for a plan. */
+  setSyncMeta: (id: string, meta: SyncMeta | null) => void
+  /** Sync engine: drop a plan locally (and its bookkeeping) after it disappeared on the server. */
+  removeLocal: (id: string) => void
+  /** Sync engine: copy a plan under a new id without sync bookkeeping; returns the new id. */
+  forkLocal: (id: string, nameSuffix: string) => string | null
+  /** Sync engine: move a plan to a new id and forget its server bookkeeping; returns the new id. */
+  reidLocal: (id: string) => string | null
 }
 
 function savedId(item: SavedItem): string {
@@ -230,11 +249,12 @@ export const useSavedPlansStore = create<SavedPlansState>()(
     (set, get) => ({
       items: [],
       currentMatchId: null,
+      syncMeta: {},
 
       createMatch: (base) => {
         const plan = normalizeMatchPlan({
           ...base,
-          id: nanoid(8),
+          id: newPlanId(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         })
@@ -380,6 +400,60 @@ export const useSavedPlansStore = create<SavedPlansState>()(
             updatedAt: new Date().toISOString(),
           })),
         })),
+
+      applyRemote: (doc) =>
+        set((s) => {
+          const item = normalizeSavedItem({ kind: doc.kind, plan: doc.data } as SavedItem)
+          const idx = s.items.findIndex((i) => savedId(i) === doc.id)
+          const items = idx >= 0 ? s.items.map((i, n) => (n === idx ? item : i)) : [...s.items, item]
+          return {
+            items,
+            syncMeta: { ...s.syncMeta, [doc.id]: { version: doc.version, role: doc.role, hash: stableHash(item) } },
+          }
+        }),
+
+      setSyncMeta: (id, meta) =>
+        set((s) => {
+          const syncMeta = { ...s.syncMeta }
+          if (meta) syncMeta[id] = meta
+          else delete syncMeta[id]
+          return { syncMeta }
+        }),
+
+      removeLocal: (id) =>
+        set((s) => {
+          const syncMeta = { ...s.syncMeta }
+          delete syncMeta[id]
+          return {
+            items: s.items.filter((i) => savedId(i) !== id),
+            currentMatchId: s.currentMatchId === id ? null : s.currentMatchId,
+            syncMeta,
+          }
+        }),
+
+      forkLocal: (id, nameSuffix) => {
+        const item = get().items.find((i) => savedId(i) === id)
+        if (!item) return null
+        const copyId = newPlanId()
+        const copy = { ...item, plan: { ...item.plan, id: copyId, name: `${item.plan.name}${nameSuffix}` } } as SavedItem
+        set((s) => ({ items: [...s.items, copy] }))
+        return copyId
+      },
+
+      reidLocal: (id) => {
+        if (!get().items.some((i) => savedId(i) === id)) return null
+        const nextId = newPlanId()
+        set((s) => {
+          const syncMeta = { ...s.syncMeta }
+          delete syncMeta[id]
+          return {
+            items: s.items.map((i) => (savedId(i) === id ? ({ ...i, plan: { ...i.plan, id: nextId } } as SavedItem) : i)),
+            currentMatchId: s.currentMatchId === id ? nextId : s.currentMatchId,
+            syncMeta,
+          }
+        })
+        return nextId
+      },
     }),
     {
       name: plansStorageKey(readActiveScope()),
@@ -392,6 +466,7 @@ export const useSavedPlansStore = create<SavedPlansState>()(
           ...persisted,
           items: Array.isArray(persisted.items) ? persisted.items.map(normalizeSavedItem) : [],
           currentMatchId: persisted.currentMatchId ?? null,
+          syncMeta: persisted.syncMeta ?? {},
         }
       },
     },

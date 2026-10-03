@@ -121,6 +121,18 @@ Every handler does an explicit membership check in SQL (`where owner_id = $u or 
 | 4 | Live-ish: `/changes` polling, conflict banner | two editors see each other's changes within ~20 s, no silent overwrite |
 | 5 | Hardening: account deletion, privacy page, rate limits, soft-delete purge cron | — |
 
+## Progress
+
+- **Phase 0 — done.** Schema migrated to Neon; `/api/health` verified on preview with a Clerk token.
+- **Phase 1 — done.** Clerk modal sign-in; plans stored per account on the device (signed-out plans claimed on first sign-in).
+- **Phase 2 — done.** Implementation notes that differ from the sketch above:
+  - Dirty tracking compares a canonical hash of each item against `syncMeta[id].hash` instead of a `dirty` flag, so store mutations are untouched.
+  - Conflict policy until Phase 4: never lose data — server version keeps the id, local edits become a "(conflict copy)" plan.
+  - Plans removed on the server are removed locally unless edited, in which case they are kept as a new plan.
+  - Sync runs on sign-in, ~1.5 s after edits, on focus/online, and every 60 s.
+  - No upload prompt yet: Phase 1's claim already moves signed-out plans into the account.
+  - Local dev, preview and production share one Neon database — split before real users arrive.
+
 ## Testing
 
 - Vitest: sync reducer (dirty/merge/conflict decisions), store migration, `requirePlanAccess`.

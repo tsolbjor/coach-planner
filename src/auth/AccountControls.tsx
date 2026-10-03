@@ -1,5 +1,6 @@
 import { Show, SignInButton, UserButton } from '@clerk/react'
 import { authEnabled } from './config'
+import { SyncIndicator } from './SyncIndicator'
 
 export function AccountControls() {
   if (!authEnabled) return null
@@ -16,6 +17,7 @@ export function AccountControls() {
         </SignInButton>
       </Show>
       <Show when="signed-in">
+        <SyncIndicator />
         <span className="inline-flex min-touch items-center px-1">
           <UserButton />
         </span>
