@@ -5,6 +5,7 @@ import { normalizePlayerLevel, type SavedItem, type MatchPlan, type SegmentPin, 
 import { generatePlan } from '../scheduler'
 import { buildSegments } from '../scheduler/segmentBuilder'
 import { getSlotIntervals } from '../utils/slotIntervals'
+import { claimAnonymousPlans, plansStorageKey, readActiveScope, writeActiveScope } from './planStorageScope'
 
 function regenSlots(plan: MatchPlan): MatchPlan {
   const active = plan.roster.filter((p) => !plan.absentPlayerIds.includes(p.id))
@@ -381,17 +382,33 @@ export const useSavedPlansStore = create<SavedPlansState>()(
         })),
     }),
     {
-      name: 'coach-saved-plans',
+      name: plansStorageKey(readActiveScope()),
+      // Also runs when switching accounts; an empty bucket must not inherit the
+      // previous account's in-memory plans.
       merge: (persistedState, currentState) => {
         const persisted = (persistedState as Partial<SavedPlansState> | undefined) ?? {}
         return {
           ...currentState,
           ...persisted,
-          items: Array.isArray(persisted.items)
-            ? persisted.items.map(normalizeSavedItem)
-            : currentState.items,
+          items: Array.isArray(persisted.items) ? persisted.items.map(normalizeSavedItem) : [],
+          currentMatchId: persisted.currentMatchId ?? null,
         }
       },
     },
   ),
 )
+
+/**
+ * Point the plans store at the signed-in account's local bucket (or the
+ * signed-out bucket for `null`). Plans made while signed out are claimed by
+ * the first account that signs in on this device.
+ */
+export async function setPlanStorageScope(userId: string | null): Promise<void> {
+  const persistApi = useSavedPlansStore.persist
+  const claimed = userId ? claimAnonymousPlans(userId) : false
+  writeActiveScope(userId)
+  const name = plansStorageKey(userId)
+  if (persistApi.getOptions().name === name && !claimed) return
+  persistApi.setOptions({ name })
+  await persistApi.rehydrate()
+}

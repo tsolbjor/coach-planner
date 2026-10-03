@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { AccountControls } from '../../auth/AccountControls'
 
 export type FlowStep = 'home' | 'plan'
 
@@ -84,6 +85,7 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
         >
           Help
         </Link>
+        <AccountControls />
       </div>
     </nav>
   )

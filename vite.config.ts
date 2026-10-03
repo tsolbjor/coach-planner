@@ -7,6 +7,8 @@ const base = process.env.VITE_BASE ?? '/'
 
 export default defineConfig({
   base,
+  // The Clerk Marketplace integration names its browser key NEXT_PUBLIC_*.
+  envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
   plugins: [
     react(),
     tailwindcss(),

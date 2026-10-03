@@ -1,1 +1,6 @@
 /// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_CLERK_PUBLISHABLE_KEY?: string
+  readonly NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?: string
+}
