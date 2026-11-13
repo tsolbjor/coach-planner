@@ -1,4 +1,4 @@
-# coac-planner
+# coach-planner
 
 ## Running the tests
 
