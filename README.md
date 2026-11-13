@@ -1,4 +1,4 @@
-# tsolbjor-coach
+# coach-planner
 
 ## Running the tests
 
