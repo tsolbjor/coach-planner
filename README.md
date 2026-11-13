@@ -1,4 +1,4 @@
-# tsolbjor-coach
+# coac-planner
 
 ## Running the tests
 
