@@ -11,3 +11,5 @@ npm run test:watch  # re-run tests on file changes
 ```
 
 To also check types and the production build (as CI does), run `npm run build`.
+
+See [docs/](docs/README.md) for architecture and decision records.
