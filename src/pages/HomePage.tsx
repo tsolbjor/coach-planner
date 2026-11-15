@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { nanoid } from 'nanoid'
 import { DEFAULT_PLAYER_LEVEL } from '../types'
@@ -8,6 +8,7 @@ import { AppShell } from '../components/common/AppShell'
 import { Button } from '../components/common/Button'
 import { Card } from '../components/common/Card'
 import { NumberStepper } from '../components/common/NumberStepper'
+import { buildPlanFile, parsePlanFile } from '../utils/planFile'
 import { buildTopFlowItems } from '../components/common/TopFlowNav'
 import { ModalShell } from '../components/plan-modals/ModalShell'
 import { SubstitutionSettings } from '../components/setup/SubstitutionSettings'
@@ -276,8 +277,12 @@ function ChipButton({
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { items, setCurrentMatch, createMatch, deleteSaved } = useSavedPlansStore()
+  const { items, setCurrentMatch, createMatch, deleteSaved, importItems } = useSavedPlansStore()
   const [creating, setCreating] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [message, setMessage] = useState<{ error: boolean; text: string } | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
 
   const matchPlans = useMemo(
     () =>
@@ -286,6 +291,37 @@ export function HomePage() {
         .map((item) => item.plan),
     [items],
   )
+
+  const handleExport = () => {
+    const chosen = items.filter((item) => selected.has(item.plan.id))
+    const blob = new Blob([buildPlanFile(chosen)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `coach-planner-plans-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    setExporting(false)
+    setMessage({ error: false, text: `Exported ${chosen.length} plan${chosen.length !== 1 ? 's' : ''}.` })
+  }
+
+  const handleImportFile = async (file: File | undefined) => {
+    if (!file) return
+    try {
+      const count = importItems(parsePlanFile(await file.text()))
+      setMessage({ error: false, text: `Imported ${count} plan${count !== 1 ? 's' : ''}.` })
+    } catch (err) {
+      setMessage({ error: true, text: err instanceof Error ? err.message : 'Could not import this file.' })
+    }
+    if (fileInput.current) fileInput.current.value = ''
+  }
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
 
   const handleOpenPlan = (planId: string) => {
     setCurrentMatch(planId)
@@ -331,6 +367,36 @@ export function HomePage() {
           </Button>
         </div>
 
+        <div className="flex flex-wrap justify-center gap-2">
+          <Button variant="secondary" onClick={() => fileInput.current?.click()}>
+            Import plans
+          </Button>
+          {items.length > 0 && (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setSelected(new Set(items.map((item) => item.plan.id)))
+                setExporting(true)
+              }}
+            >
+              Export plans
+            </Button>
+          )}
+          <input
+            ref={fileInput}
+            type="file"
+            accept=".json,application/json"
+            className="hidden"
+            onChange={(event) => void handleImportFile(event.target.files?.[0])}
+          />
+        </div>
+
+        {message && (
+          <p role="status" className={['text-center text-sm', message.error ? 'text-red-600' : 'text-green-700'].join(' ')}>
+            {message.text}
+          </p>
+        )}
+
         {matchPlans.length > 0 && (
           <div className="space-y-3">
             <p className="text-sm font-medium text-slate-500">
@@ -370,6 +436,35 @@ export function HomePage() {
           </div>
         )}
       </div>
+
+      {exporting && (
+        <ModalShell title="Choose plans to export" eyebrow="Export" onClose={() => setExporting(false)} maxWidth="lg">
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={() => setSelected(new Set(items.map((i) => i.plan.id)))}>
+                Select all
+              </Button>
+              <Button variant="secondary" onClick={() => setSelected(new Set())}>
+                Select none
+              </Button>
+            </div>
+            {items.map((item) => (
+              <label key={item.plan.id} className="flex items-center gap-3 text-sm text-slate-800">
+                <input
+                  type="checkbox"
+                  checked={selected.has(item.plan.id)}
+                  onChange={() => toggleSelected(item.plan.id)}
+                />
+                <span className="truncate">{item.plan.name}</span>
+              </label>
+            ))}
+            <p className="text-xs text-slate-500">The file includes player names.</p>
+            <Button fullWidth disabled={selected.size === 0} onClick={handleExport}>
+              Download file
+            </Button>
+          </div>
+        </ModalShell>
+      )}
 
       {creating && <CreatePlanModal onClose={() => setCreating(false)} onCreate={handleCreate} />}
     </AppShell>

@@ -108,6 +108,8 @@ interface SavedPlansState {
   saveMatch: (plan: MatchPlan) => void
   saveTournament: (plan: TournamentPlan) => void
   deleteSaved: (id: string) => void
+  /** Add imported items; clashing ids get a new id. Throws (changing nothing) if an item cannot be normalized. Returns count added. */
+  importItems: (items: SavedItem[]) => number
   getSaved: (id: string) => SavedItem | undefined
   /** Update top-level fields of a match plan */
   updateMatch: (planId: string, updates: Partial<Omit<MatchPlan, 'id' | 'createdAt'>>) => void
@@ -228,6 +230,21 @@ export const useSavedPlansStore = create<SavedPlansState>()(
   persist(
     (set, get) => ({
       items: [],
+      importItems: (incoming) => {
+        const used = new Set(get().items.map((i) => i.plan.id))
+        const now = new Date().toISOString()
+        const added = incoming.map((raw) => {
+          const item = normalizeSavedItem(raw)
+          let id = item.plan.id
+          while (used.has(id)) id = nanoid(8)
+          used.add(id)
+          return id === item.plan.id
+            ? item
+            : ({ kind: item.kind, plan: { ...item.plan, id, updatedAt: now } } as SavedItem)
+        })
+        set((s) => ({ items: [...s.items, ...added] }))
+        return added.length
+      },
       currentMatchId: null,
 
       createMatch: (base) => {

@@ -329,3 +329,17 @@ describe('legacy pin migration', () => {
     expect(current(plan.id).warnings?.some((w) => w.kind === 'invalid-input')).toBe(true)
   })
 })
+
+describe('importItems', () => {
+  it('adds items, giving clashing ids a new id and keeping existing plans', () => {
+    useSavedPlansStore.setState({ items: [] })
+    const store = useSavedPlansStore.getState()
+    const plan = store.createMatch(base())
+    const item = useSavedPlansStore.getState().getSaved(plan.id)!
+    expect(useSavedPlansStore.getState().importItems([JSON.parse(JSON.stringify(item))])).toBe(1)
+    const items = useSavedPlansStore.getState().items
+    expect(items).toHaveLength(2)
+    expect(new Set(items.map((i) => i.plan.id)).size).toBe(2)
+    expect(items[0]!.plan.id).toBe(plan.id)
+  })
+})
