@@ -17,6 +17,19 @@
 }
 
 @media print {
+  @page { size: A4 landscape; margin: 0; }
+  .print-sheet {
+    width: 297mm;
+    height: 210mm;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    break-after: page;
+    break-inside: avoid;
+    overflow: hidden;
+  }
+  .print-sheet:last-child { break-after: auto; }
+  .print-half { box-sizing: border-box; width: 148.5mm; height: 210mm; padding: 10mm; overflow: hidden; }
+  .print-half:first-child { border-right: 1px dashed #cbd5e1; }
   .no-print { display: none !important; }
   .print-only { display: block !important; }
 }
