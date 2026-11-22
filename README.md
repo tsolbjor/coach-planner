@@ -1,6 +1,6 @@
 # coach-planner
 
-## Running the tests
+## Running the tests - change
 
 Install dependencies, then run the test suite with [Vitest](https://vitest.dev/):
 
