@@ -1,5 +1,7 @@
 # coach-planner
 
+Hello, coach! Whistle ready? Clipboard polished? Great, let's plan a season where the only thing getting benched is the snack budget. 🏃‍♂️
+
 ## Running the tests
 
 Install dependencies, then run the test suite with [Vitest](https://vitest.dev/):
