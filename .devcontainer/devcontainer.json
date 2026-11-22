@@ -1,0 +1,9 @@
+{
+  // The environment to work on coach-planner in: VS Code, Codespaces, and Team Platform's workspaces
+  // (which build it ahead and run it as its user).
+  "name": "coach-planner",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:5.2.7-24-bookworm",
+  "remoteUser": "node",
+  "postCreateCommand": "npm ci",
+  "forwardPorts": [5173]
+}
