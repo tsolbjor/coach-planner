@@ -1,6 +1,7 @@
 # coach-planner
 
 Hello, coach! Whistle ready? Clipboard polished? Great, let's plan a season where the only thing getting benched is the snack budget. 🏃‍♂️
+_Docs last updated: 2026-11-23_
 
 ## Running the tests
 

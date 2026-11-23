@@ -24,10 +24,11 @@ describe('PrintLayout', () => {
       warnings: [{ kind: 'low-player-count', message: 'Not enough available players.' }],
     }
     const html = renderToStaticMarkup(createElement(PrintLayout, { plan }))
-    expect(html).toContain('Match 1 · Period 1')
-    expect(html).toContain('Match 2 · Period 1')
+    expect(html).toContain('Match 1 · Plan')
+    expect(html).toContain('Match 2 · Substitutions')
     expect(html).toContain('Next substitution at 7.5&#x27;')
     expect(html).toContain('Not enough available players.')
+    expect(html.match(/class="print-sheet"/g)).toHaveLength(2)
     expect(html.match(/Next substitution at/g)).toHaveLength(2)
   })
 })

@@ -1,5 +1,7 @@
 # Architecture
 
+_Last updated: 2026-11-23_
+
 ## Overview
 
 A single-page React app with no backend. All state lives in the browser (localStorage); plans are shared by encoding them into a URL.
@@ -22,13 +24,13 @@ src/
   components/
     common/             Shared UI primitives (AppShell, Button, Card, ...)
     plan-modals/        Setup and players modals
-    plan-view/          Timeline, SegmentEditor, PrintLayout
+    plan-view/          Timeline, SegmentEditor, PrintLayout (print-only view)
     roster/, setup/     Player rows/badges, substitution settings
   constants/            Sport presets (sizes, lineups, defaults)
   scheduler/            Pure rotation-planning logic (no React)
   store/                Zustand store of saved plans
   types/                Domain types: sport, player, match
-  utils/                Share URLs, slot intervals/transitions, pitch time
+  utils/                Share URLs, plan file export/import, slot intervals/transitions, pitch time
 public/                 PWA icons
 ```
 
@@ -57,6 +59,14 @@ public/                 PWA icons
 ## Sharing
 
 `utils/shareUrl.ts` serialises a plan to JSON, compresses it, and puts it in `#/import?plan=...`. `ImportPage` decodes and saves it as a new item.
+
+## Export and import of plan files
+
+`utils/planFile.ts` builds a JSON file (`format: coach-planner-plans`, `version`, `exportedAt`, `items`) from chosen saved plans, and `parsePlanFile` validates one on import, rejecting non-exports, newer versions, empty or corrupted files. The Home page offers "Export plans" and "Import plans" for moving plans between devices.
+
+## Printing
+
+The plan page has a Print button calling `window.print()`. `PrintLayout` is rendered in a `print-only` container, and the interactive UI is wrapped in `no-print`. Warnings are included in the printout.
 
 ## Offline / PWA
 
