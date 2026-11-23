@@ -1,5 +1,7 @@
 # Architecture decision records
 
+_Last updated: 2026-11-23_
+
 Several of these were reverse-engineered from the existing code, so their dates are approximate and their rationale is inferred.
 
 | # | Title | Status |
