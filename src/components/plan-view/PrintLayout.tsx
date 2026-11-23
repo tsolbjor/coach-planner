@@ -32,7 +32,9 @@ export function PrintLayout({ plan }: PrintLayoutProps) {
                 {plan.sportConfig.name} · {plan.sportConfig.periodCount}×{plan.sportConfig.periodDurationMinutes} min ·{' '}
                 {plan.benchStintMinutes} min substitution interval
               </p>
-              <Timeline slots={matchSlots} sportConfig={plan.sportConfig} players={plan.roster} />
+              <div className="print-timeline">
+                <Timeline slots={matchSlots} sportConfig={plan.sportConfig} players={plan.roster} />
+              </div>
               {(plan.warnings?.length ?? 0) > 0 && (
                 <div className="text-xs text-amber-800 mt-2">
                   <h3 className="font-semibold">Plan warnings</h3>

@@ -37,6 +37,15 @@
     width: 210mm; height: 148.5mm; padding: 10mm; overflow: hidden;
     transform-origin: top left; transform: translateY(210mm) rotate(-90deg);
   }
+  /* Shrink the timeline so every column fits the 190mm printable width instead of being clipped */
+  .print-timeline > div { overflow: visible !important; }
+  .print-timeline table { min-width: 0 !important; width: 100%; table-layout: auto; font-size: 7pt; }
+  .print-timeline th, .print-timeline td {
+    min-width: 0 !important; padding: 0.5mm 0.4mm !important; font-size: 7pt !important; line-height: 1.15;
+    position: static !important; border-radius: 0 !important;
+  }
+  .print-timeline th:first-child, .print-timeline td:first-child { text-align: left; white-space: nowrap; padding-right: 1.5mm !important; }
+  .print-timeline button { height: 4.5mm !important; font-size: 7pt !important; }
   .print-half:first-child { border-right: 1px dashed #cbd5e1; }
   .no-print { display: none !important; }
   .print-only { display: block !important; }
