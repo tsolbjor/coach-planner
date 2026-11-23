@@ -1,5 +1,7 @@
 # coach-planner
 
+_Docs last updated: 2026-11-23_
+
 ## Running the tests
 
 Install dependencies, then run the test suite with [Vitest](https://vitest.dev/):
