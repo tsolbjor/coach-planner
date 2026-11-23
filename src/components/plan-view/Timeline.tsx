@@ -17,7 +17,7 @@ type CellState = 'gk' | 'field' | 'bench' | 'absent' | 'absent-credited' | 'unkn
 const stateBg: Record<CellState, string> = {
   gk: 'bg-yellow-300 text-yellow-900',
   field: 'bg-blue-200 text-blue-900',
-  bench: 'bg-slate-200 text-slate-500',
+  bench: 'bg-slate-200 text-slate-700',
   absent: 'bg-rose-100 text-rose-700',
   'absent-credited': 'bg-rose-200 text-rose-800',
   unknown: 'bg-slate-50 text-slate-300',
@@ -376,7 +376,7 @@ export function Timeline({ slots: sourceSlots, players, onCellClick }: TimelineP
                 })}
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
                   {formatMinute(mins)}
-                  <span className="block text-slate-400 font-normal">{pct}%</span>
+                  <span className="block text-slate-600 font-normal">{pct}%</span>
                 </td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">{stats.benchStints}</td>
                 <td className="py-1.5 px-2 text-center font-semibold text-slate-700">
