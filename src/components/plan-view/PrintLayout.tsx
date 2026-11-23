@@ -24,7 +24,8 @@ export function PrintLayout({ plan }: PrintLayoutProps) {
         const matchPeriods = periodGroups.filter((g) => g.matchIndex === matchIndex)
         return (
           <section key={matchIndex} className="print-sheet">
-            <div className="print-half">
+            <div className="print-half print-half-plan">
+              <div className="print-rotate">
               <h1 className="text-lg font-bold leading-tight">{plan.name}</h1>
               <h2 className="text-base font-semibold">Match {matchIndex + 1} · Plan</h2>
               <p className="text-slate-500 text-xs mb-2">
@@ -38,6 +39,7 @@ export function PrintLayout({ plan }: PrintLayoutProps) {
                   {plan.warnings!.map((warning, index) => <p key={index}>{warning.message}</p>)}
                 </div>
               )}
+              </div>
             </div>
 
             <div className="print-half">
