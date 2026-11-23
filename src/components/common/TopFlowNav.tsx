@@ -43,7 +43,7 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
   }
 
   return (
-    <nav className={['mb-6 overflow-x-auto pb-1', className].join(' ')} aria-label="App flow">
+    <nav className={['no-print mb-6 overflow-x-auto pb-1', className].join(' ')} aria-label="App flow">
       <div className="inline-flex min-w-full items-center gap-2 rounded-[1.75rem] border border-slate-200/80 bg-white/85 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.06)] backdrop-blur">
         {items.map((item) => {
           const classes = [
