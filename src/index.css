@@ -30,6 +30,13 @@
   }
   .print-sheet:last-child { break-after: auto; }
   .print-half { box-sizing: border-box; width: 148.5mm; height: 210mm; padding: 10mm; overflow: hidden; }
+  .print-half-plan { position: relative; padding: 0; }
+  /* Plan is laid out as a 210x148.5mm landscape page, turned 90° to fill the left half */
+  .print-rotate {
+    box-sizing: border-box; position: absolute; top: 0; left: 0;
+    width: 210mm; height: 148.5mm; padding: 10mm; overflow: hidden;
+    transform-origin: top left; transform: translateY(210mm) rotate(-90deg);
+  }
   .print-half:first-child { border-right: 1px dashed #cbd5e1; }
   .no-print { display: none !important; }
   .print-only { display: block !important; }
