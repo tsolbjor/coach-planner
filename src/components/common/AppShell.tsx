@@ -21,7 +21,7 @@ export function AppShell({
   width = 'default',
 }: AppShellProps) {
   return (
-    <div className="min-h-screen print:min-h-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_32%),linear-gradient(to_bottom,_#f8fafc,_#f8fafc)]">
+    <div className="min-h-screen print:min-h-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.08),_transparent_32%)] bg-slate-50">
       <div className={['mx-auto px-4 pb-12 lg:px-6 print:max-w-none print:p-0', widthClasses[width]].join(' ')}>
         <TopFlowNav items={flowItems} className="pt-4" />
         {children}

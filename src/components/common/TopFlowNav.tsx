@@ -1,4 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
+import { ThemeToggle } from './ThemeToggle'
 
 export type FlowStep = 'home' | 'plan'
 
@@ -49,7 +50,7 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
           const classes = [
             'inline-flex min-touch items-center gap-2 rounded-2xl border px-3 py-2 text-sm font-medium whitespace-nowrap transition-all',
             item.active
-              ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+              ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-blue-600 dark:bg-blue-600'
               : item.disabled
                 ? 'border-transparent bg-slate-100 text-slate-400'
                 : 'border-transparent bg-transparent text-slate-600 hover:border-slate-200 hover:bg-slate-50 hover:text-slate-900',
@@ -69,13 +70,15 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
           )
         })}
 
+        <div className="ml-auto flex items-center gap-2">
+        <ThemeToggle />
         <Link
           to={{
             pathname: location.pathname,
             search: `?${helpParams.toString()}`,
           }}
           className={[
-            'ml-auto inline-flex min-touch items-center rounded-2xl border px-3 py-2 text-sm font-medium whitespace-nowrap transition-all',
+            'inline-flex min-touch items-center rounded-2xl border px-3 py-2 text-sm font-medium whitespace-nowrap transition-all',
             helpActive
               ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
               : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white hover:text-slate-900',
@@ -84,6 +87,7 @@ export function TopFlowNav({ items, className = '' }: TopFlowNavProps) {
         >
           Help
         </Link>
+        </div>
       </div>
     </nav>
   )
