@@ -1,5 +1,110 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Dark theme: remap the palette on screen only, so printed sheets stay light. */
+@media screen {
+  html.dark {
+    color-scheme: dark;
+    --dk-amber-100: oklch(96.2% 0.059 95.617);
+    --dk-amber-200: oklch(92.4% 0.12 95.746);
+    --dk-amber-300: oklch(87.9% 0.169 91.605);
+    --dk-amber-800: oklch(47.3% 0.137 46.201);
+    --dk-amber-900: oklch(41.4% 0.112 45.904);
+    --dk-amber-950: oklch(27.9% 0.077 45.635);
+    --dk-blue-100: oklch(93.2% 0.032 255.585);
+    --dk-blue-200: oklch(88.2% 0.059 254.128);
+    --dk-blue-300: oklch(80.9% 0.105 251.813);
+    --dk-blue-800: oklch(42.4% 0.199 265.638);
+    --dk-blue-900: oklch(37.9% 0.146 265.522);
+    --dk-blue-950: oklch(28.2% 0.091 267.935);
+    --dk-green-100: oklch(96.2% 0.044 156.743);
+    --dk-green-200: oklch(92.5% 0.084 155.995);
+    --dk-green-300: oklch(87.1% 0.15 154.449);
+    --dk-green-800: oklch(44.8% 0.119 151.328);
+    --dk-green-900: oklch(39.3% 0.095 152.535);
+    --dk-green-950: oklch(26.6% 0.065 152.934);
+    --dk-red-100: oklch(93.6% 0.032 17.717);
+    --dk-red-200: oklch(88.5% 0.062 18.334);
+    --dk-red-300: oklch(80.8% 0.114 19.571);
+    --dk-red-800: oklch(44.4% 0.177 26.899);
+    --dk-red-900: oklch(39.6% 0.141 25.723);
+    --dk-red-950: oklch(25.8% 0.092 26.042);
+    --dk-rose-100: oklch(94.1% 0.03 12.58);
+    --dk-rose-200: oklch(89.2% 0.058 10.001);
+    --dk-rose-300: oklch(81% 0.117 11.638);
+    --dk-rose-800: oklch(45.5% 0.188 13.697);
+    --dk-rose-900: oklch(41% 0.159 10.272);
+    --dk-rose-950: oklch(27.1% 0.105 12.094);
+    --dk-slate-100: oklch(96.8% 0.007 247.896);
+    --dk-slate-200: oklch(92.9% 0.013 255.508);
+    --dk-slate-300: oklch(86.9% 0.022 252.894);
+    --dk-slate-400: oklch(70.4% 0.04 256.788);
+    --dk-slate-50: oklch(98.4% 0.003 247.858);
+    --dk-slate-600: oklch(44.6% 0.043 257.281);
+    --dk-slate-700: oklch(37.2% 0.044 257.287);
+    --dk-slate-800: oklch(27.9% 0.041 260.031);
+    --dk-slate-900: oklch(20.8% 0.042 265.755);
+    --dk-slate-950: oklch(12.9% 0.042 264.695);
+    --dk-yellow-100: oklch(97.3% 0.071 103.193);
+    --dk-yellow-200: oklch(94.5% 0.129 101.54);
+    --dk-yellow-300: oklch(90.5% 0.182 98.111);
+    --dk-yellow-800: oklch(47.6% 0.114 61.907);
+    --dk-yellow-900: oklch(42.1% 0.095 57.708);
+    --dk-yellow-950: oklch(28.6% 0.066 53.813);
+    --color-slate-50: var(--dk-slate-950);
+    --color-slate-100: var(--dk-slate-900);
+    --color-slate-200: var(--dk-slate-800);
+    --color-slate-300: var(--dk-slate-700);
+    --color-slate-400: var(--dk-slate-600);
+    --color-slate-600: var(--dk-slate-400);
+    --color-slate-700: var(--dk-slate-300);
+    --color-slate-800: var(--dk-slate-200);
+    --color-slate-900: var(--dk-slate-100);
+    --color-slate-950: var(--dk-slate-50);
+    --color-blue-50: var(--dk-blue-950);
+    --color-blue-100: var(--dk-blue-900);
+    --color-blue-200: var(--dk-blue-800);
+    --color-blue-700: var(--dk-blue-300);
+    --color-blue-800: var(--dk-blue-200);
+    --color-blue-900: var(--dk-blue-100);
+    --color-amber-50: var(--dk-amber-950);
+    --color-amber-100: var(--dk-amber-900);
+    --color-amber-200: var(--dk-amber-800);
+    --color-amber-700: var(--dk-amber-300);
+    --color-amber-800: var(--dk-amber-200);
+    --color-amber-900: var(--dk-amber-100);
+    --color-yellow-50: var(--dk-yellow-950);
+    --color-yellow-100: var(--dk-yellow-900);
+    --color-yellow-200: var(--dk-yellow-800);
+    --color-yellow-700: var(--dk-yellow-300);
+    --color-yellow-800: var(--dk-yellow-200);
+    --color-yellow-900: var(--dk-yellow-100);
+    --color-rose-50: var(--dk-rose-950);
+    --color-rose-100: var(--dk-rose-900);
+    --color-rose-200: var(--dk-rose-800);
+    --color-rose-700: var(--dk-rose-300);
+    --color-rose-800: var(--dk-rose-200);
+    --color-rose-900: var(--dk-rose-100);
+    --color-red-50: var(--dk-red-950);
+    --color-red-100: var(--dk-red-900);
+    --color-red-200: var(--dk-red-800);
+    --color-red-700: var(--dk-red-300);
+    --color-red-800: var(--dk-red-200);
+    --color-red-900: var(--dk-red-100);
+    --color-green-50: var(--dk-green-950);
+    --color-green-100: var(--dk-green-900);
+    --color-green-200: var(--dk-green-800);
+    --color-green-700: var(--dk-green-300);
+    --color-green-800: var(--dk-green-200);
+    --color-green-900: var(--dk-green-100);
+  }
+  html.dark .bg-white { background-color: var(--color-slate-900); }
+  html.dark .bg-white\/85 { background-color: color-mix(in oklab, var(--color-slate-900) 85%, transparent); }
+  html.dark .bg-white\/70 { background-color: color-mix(in oklab, var(--color-slate-900) 70%, transparent); }
+  html.dark .hover\:bg-white:hover { background-color: var(--color-slate-800); }
+}
+
 @layer base {
   html {
     -webkit-tap-highlight-color: transparent;
